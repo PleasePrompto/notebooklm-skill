@@ -11,7 +11,7 @@
 
 > Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Zero hallucinations, just your knowledge base.
 
-[Installation](#installation) • [Quick Start](#quick-start) • [How It Works](#how-it-works) • [MCP Alternative](https://github.com/PleasePrompto/notebooklm-mcp)
+[Installation](#installation) • [Quick Start](#quick-start) • [Why NotebookLM](#why-notebooklm-not-local-rag) • [How It Works](#how-it-works) • [MCP Alternative](https://github.com/PleasePrompto/notebooklm-mcp)
 
 </div>
 
@@ -42,6 +42,25 @@ Your Task → Claude asks NotebookLM → Gemini synthesizes answer → Claude wr
 ```
 
 **No more copy-paste dance**: Claude asks questions directly and gets answers straight back in the CLI. It builds deep understanding through automatic follow-ups, getting specific implementation details, edge cases, and best practices.
+
+---
+
+## Why NotebookLM, Not Local RAG?
+
+| Approach | Token Cost | Setup Time | Hallucinations | Answer Quality |
+|----------|------------|------------|----------------|----------------|
+| **Feed docs to Claude** | 🔴 Very high (multiple file reads) | Instant | Yes - fills gaps | Variable retrieval |
+| **Web search** | 🟡 Medium | Instant | High - unreliable sources | Hit or miss |
+| **Local RAG** | 🟡 Medium-High | Hours (embeddings, chunking) | Medium - retrieval gaps | Depends on setup |
+| **NotebookLM Skill** | 🟢 Minimal | 5 minutes | **Zero** - refuses if unknown | Expert synthesis |
+
+### What Makes NotebookLM Superior?
+
+1. **Pre-processed by Gemini**: Upload docs once, get instant expert knowledge
+2. **Natural language Q&A**: Not just retrieval — actual understanding and synthesis
+3. **Multi-source correlation**: Connects information across 50+ documents
+4. **Citation-backed**: Every answer includes source references
+5. **No infrastructure**: No vector DBs, embeddings, or chunking strategies needed
 
 ---
 
