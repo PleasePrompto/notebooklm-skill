@@ -1,0 +1,14 @@
+{
+  "name": "notebooklm-marketplace",
+  "owner": {
+    "name": "PleasePrompto",
+    "url": "https://github.com/PleasePrompto"
+  },
+  "plugins": [
+    {
+      "name": "notebooklm",
+      "source": ".",
+      "description": "Query Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Zero hallucinations, just your knowledge base."
+    }
+  ]
+}

@@ -66,7 +66,35 @@ Your Task → Claude asks NotebookLM → Gemini synthesizes answer → Claude wr
 
 ## Installation
 
-### The simplest installation ever:
+### Method 1: Plugin Installation (Recommended)
+
+Install directly from the marketplace with a single command:
+
+```bash
+# Add the marketplace
+/plugin marketplace add https://github.com/PleasePrompto/notebooklm-skill
+
+# Install the plugin
+/plugin install notebooklm
+```
+
+That's it! The plugin and skill are now available in Claude Code.
+
+### Method 2: Local Git Installation
+
+Alternatively, clone and install locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/PleasePrompto/notebooklm-skill
+
+# Add as a local plugin
+/plugin install /path/to/notebooklm-skill
+```
+
+### Method 3: Legacy Skill Installation
+
+For manual skill-only installation (without plugin structure):
 
 ```bash
 # 1. Create skills directory (if it doesn't exist)
@@ -76,9 +104,12 @@ mkdir -p ~/.claude/skills
 cd ~/.claude/skills
 git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 
-# 3. That's it! Open Claude Code and say:
-"What are my skills?"
+# 3. Move skill files to correct location
+mv notebooklm/skills/notebooklm/* notebooklm/
+rm -rf notebooklm/skills
 ```
+
+### Auto-Setup on First Use
 
 When you first use the skill, it automatically:
 - Creates an isolated Python environment (`.venv`)
@@ -90,14 +121,19 @@ When you first use the skill, it automatically:
 
 ## Quick Start
 
-### 1. Check your skills
+### 1. Verify Installation
 
-Say in Claude Code:
+After installing the plugin, verify it's available:
+```
+/plugin list
+```
+
+Or check your skills:
 ```
 "What skills do I have?"
 ```
 
-Claude will list your available skills including NotebookLM.
+Claude will list your available plugins and skills including NotebookLM.
 
 ### 2. Authenticate with Google (one-time)
 
@@ -136,7 +172,7 @@ Claude automatically selects the right notebook and gets the answer directly fro
 
 ## How It Works
 
-This is a **Claude Code Skill** - a local folder containing instructions and scripts that Claude Code can use when needed. Unlike the [MCP server version](https://github.com/PleasePrompto/notebooklm-mcp), this runs directly in Claude Code without needing a separate server.
+This is a **Claude Code Plugin** that packages a powerful NotebookLM skill. It's a structured directory containing instructions and scripts that Claude Code can use when needed. Unlike the [MCP server version](https://github.com/PleasePrompto/notebooklm-mcp), this runs directly in Claude Code without needing a separate server.
 
 ### Key Differences from MCP Server
 
@@ -152,18 +188,25 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 ### Architecture
 
 ```
-~/.claude/skills/notebooklm/
-├── SKILL.md              # Instructions for Claude
-├── scripts/              # Python automation scripts
-│   ├── ask_question.py   # Query NotebookLM
-│   ├── notebook_manager.py # Library management
-│   └── auth_manager.py   # Google authentication
-├── .venv/                # Isolated Python environment (auto-created)
-└── data/                 # Local notebook library
+notebooklm-skill/                    # Plugin root
+├── .claude-plugin/
+│   ├── plugin.json                  # Plugin manifest
+│   └── marketplace.json             # Marketplace distribution
+├── skills/
+│   └── notebooklm/                  # The NotebookLM skill
+│       ├── SKILL.md                 # Instructions for Claude
+│       ├── scripts/                 # Python automation scripts
+│       │   ├── ask_question.py      # Query NotebookLM
+│       │   ├── notebook_manager.py  # Library management
+│       │   └── auth_manager.py      # Google authentication
+│       ├── .venv/                   # Isolated Python environment (auto-created)
+│       ├── data/                    # Local notebook library
+│       └── requirements.txt         # Python dependencies
+└── README.md
 ```
 
 When you mention NotebookLM or send a notebook URL, Claude:
-1. Loads the skill instructions
+1. Loads the skill instructions from the plugin
 2. Runs the appropriate Python script
 3. Opens a browser, asks your question
 4. Returns the answer directly to you
@@ -252,10 +295,10 @@ Note: The MCP server uses the same Patchright library but via TypeScript/npm eco
 
 ### Data Storage
 
-All data is stored locally within the skill directory:
+All data is stored locally within the skill directory inside the plugin:
 
 ```
-~/.claude/skills/notebooklm/data/
+skills/notebooklm/data/
 ├── library.json       - Your notebook library with metadata
 ├── auth_info.json     - Authentication status info
 └── browser_state/     - Browser cookies and session data
@@ -319,11 +362,14 @@ Chrome runs locally on your machine. Your credentials never leave your computer.
 
 ## Troubleshooting
 
-### Skill not found
+### Plugin/Skill not found
 ```bash
-# Make sure it's in the right location
-ls ~/.claude/skills/notebooklm/
-# Should show: SKILL.md, scripts/, etc.
+# Check installed plugins
+/plugin list
+
+# Or verify the skill directory structure
+ls skills/notebooklm/
+# Should show: SKILL.md, scripts/, requirements.txt, etc.
 ```
 
 ### Authentication issues
@@ -334,8 +380,8 @@ Say: `"Clear NotebookLM browser data"`
 
 ### Dependencies issues
 ```bash
-# Manual reinstall if needed
-cd ~/.claude/skills/notebooklm
+# Manual reinstall if needed (navigate to your plugin installation)
+cd /path/to/notebooklm-skill/skills/notebooklm
 rm -rf .venv
 python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
@@ -366,39 +412,42 @@ That said, if you run into problems or have questions, feel free to open an issu
 
 ## Credits
 
-This skill is inspired by my [**NotebookLM MCP Server**](https://github.com/PleasePrompto/notebooklm-mcp) and provides an alternative implementation as a Claude Code Skill:
-- Both use Patchright for browser automation (TypeScript for MCP, Python for Skill)
-- Skill version runs directly in Claude Code without MCP protocol
+This plugin is inspired by my [**NotebookLM MCP Server**](https://github.com/PleasePrompto/notebooklm-mcp) and provides an alternative implementation as a Claude Code Plugin:
+- Both use Patchright for browser automation (TypeScript for MCP, Python for Plugin)
+- Plugin version runs directly in Claude Code without MCP protocol
+- Packaged as a proper plugin with marketplace distribution
 - Stateless design optimized for skill architecture
 
 If you need:
 - **Persistent sessions** → Use the [MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
 - **Multiple tool support** (Codex, Cursor) → Use the [MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
-- **Quick Claude Code integration** → Use this skill
+- **Quick Claude Code integration** → Use this plugin
 
 ---
 
 ## The Bottom Line
 
-**Without this skill**: NotebookLM in browser → Copy answer → Paste in Claude → Copy next question → Back to browser...
+**Without this plugin**: NotebookLM in browser → Copy answer → Paste in Claude → Copy next question → Back to browser...
 
-**With this skill**: Claude researches directly → Gets answers instantly → Writes correct code
+**With this plugin**: Claude researches directly → Gets answers instantly → Writes correct code
 
 Stop the copy-paste dance. Start getting accurate, grounded answers directly in Claude Code.
 
 ```bash
 # Get started in 30 seconds
-cd ~/.claude/skills
-git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
-# Open Claude Code: "What are my skills?"
+/plugin marketplace add https://github.com/PleasePrompto/notebooklm-skill
+/plugin install notebooklm
+# That's it! Start using: "Query my NotebookLM about..."
 ```
 
 ---
 
 <div align="center">
 
-Built as a Claude Code Skill adaptation of my [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
+Built as a Claude Code Plugin adaptation of my [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
 
 For zero-hallucination research directly in Claude Code
+
+**Plugin v1.0.0** • [Report Issues](https://github.com/PleasePrompto/notebooklm-skill/issues)
 
 </div>

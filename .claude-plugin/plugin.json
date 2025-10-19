@@ -1,0 +1,14 @@
+{
+  "name": "notebooklm",
+  "description": "Query Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Zero hallucinations, just your knowledge base.",
+  "version": "1.0.0",
+  "author": {
+    "name": "PleasePrompto",
+    "url": "https://github.com/PleasePrompto"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PleasePrompto/notebooklm-skill"
+  },
+  "keywords": ["notebooklm", "gemini", "research", "documentation", "knowledge-base", "rag"]
+}
