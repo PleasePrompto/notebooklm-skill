@@ -1,0 +1,8 @@
+# NotebookLM Skill Dependencies
+# These will be installed in the skill's local .venv
+
+# Core browser automation
+patchright==1.55.2
+
+# Environment management
+python-dotenv==1.0.0
