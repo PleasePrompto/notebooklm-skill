@@ -67,19 +67,22 @@ class SkillEnvironment:
                 )
                 print("✅ Dependencies installed")
 
-                # Install Chromium for Patchright
-                print("🌐 Installing Chromium for Patchright...")
+                # Install Chrome for Patchright (not Chromium!)
+                # Using real Chrome ensures cross-platform reliability and consistent browser fingerprinting
+                # See: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python#anti-detection
+                print("🌐 Installing Google Chrome for Patchright...")
                 try:
                     subprocess.run(
-                        [str(self.venv_python), "-m", "patchright", "install", "chromium"],
+                        [str(self.venv_python), "-m", "patchright", "install", "chrome"],
                         check=True,
                         capture_output=True,
                         text=True
                     )
-                    print("✅ Chromium installed")
+                    print("✅ Chrome installed")
                 except subprocess.CalledProcessError as e:
-                    print(f"⚠️ Warning: Failed to install Chromium: {e}")
-                    print("   You may need to run: python -m patchright install chromium")
+                    print(f"⚠️ Warning: Failed to install Chrome: {e}")
+                    print("   You may need to run manually: python -m patchright install chrome")
+                    print("   Chrome is required (not Chromium) for reliability!")
 
                 return True
             except subprocess.CalledProcessError as e:

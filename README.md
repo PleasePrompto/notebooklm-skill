@@ -86,6 +86,21 @@ When you first use the skill, it automatically:
 - Sets up browser automation
 - Everything stays contained in the skill folder
 
+### Important: Chrome Installation
+
+This skill uses **real Google Chrome** (not Chromium) for maximum reliability and consistent browser fingerprinting. After cloning the repository, install Chrome:
+
+```bash
+cd ~/.claude/skills/notebooklm
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+patchright install chrome
+```
+
+**Why Chrome and not Chromium?**
+- ✅ Cross-platform reliability (fixes auth issues on some systems)
+- ✅ Consistent browser identity for Google services
+- ✅ Better anti-detection (Patchright best practice)
+
 ---
 
 ## Quick Start

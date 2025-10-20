@@ -3,6 +3,11 @@
 Authentication Manager for NotebookLM
 Handles Google login and browser state persistence
 Based on the MCP server implementation
+
+Implements hybrid auth approach:
+- Persistent browser profile (user_data_dir) for fingerprint consistency
+- Manual cookie injection from state.json for session cookies (Playwright bug workaround)
+See: https://github.com/microsoft/playwright/issues/36139
 """
 
 import json
@@ -92,16 +97,20 @@ class AuthManager:
         context = None
 
         try:
-            # Launch persistent browser context
+            # Launch persistent browser context with real Chrome (not Chromium)
+            # Using channel="chrome" ensures cross-platform reliability and consistent browser fingerprinting
+            # See: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python#anti-detection
             playwright = sync_playwright().start()
 
             context = playwright.chromium.launch_persistent_context(
                 user_data_dir=str(self.browser_state_dir / "browser_profile"),
+                channel="chrome",  # Use real Chrome for reliability (install: patchright install chrome)
                 headless=headless,
-                viewport={'width': 1024, 'height': 768},
+                no_viewport=True,  # Recommended by Patchright for anti-detection
+                ignore_default_args=["--enable-automation"],  # Remove automation infobar
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 args=[
-                    '--disable-blink-features=AutomationControlled',
+                    '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
                     '--disable-dev-shm-usage',
                     '--no-sandbox',
                     '--no-first-run',
@@ -233,6 +242,7 @@ class AuthManager:
     def validate_auth(self) -> bool:
         """
         Validate that stored authentication works
+        Uses persistent context to match actual usage pattern
 
         Returns:
             True if authentication is valid
@@ -243,17 +253,40 @@ class AuthManager:
         print("🔍 Validating authentication...")
 
         playwright = None
-        browser = None
+        context = None
 
         try:
             # Start playwright
             playwright = sync_playwright().start()
 
-            # Launch browser
-            browser = playwright.chromium.launch(headless=True)
+            # Launch persistent context (same as setup_auth and ask_question)
+            context = playwright.chromium.launch_persistent_context(
+                user_data_dir=str(self.browser_state_dir / "browser_profile"),
+                channel="chrome",
+                headless=True,
+                no_viewport=True,
+                ignore_default_args=["--enable-automation"],  # Remove automation infobar
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                args=[
+                    '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--no-first-run',
+                    '--no-default-browser-check'
+                ]
+            )
 
-            # Load saved state
-            context = browser.new_context(storage_state=str(self.state_file))
+            # WORKAROUND: Manually inject cookies from state.json for session cookie persistence
+            # This fixes Playwright bug #36139 where session cookies don't persist in user_data_dir
+            if self.state_file.exists():
+                try:
+                    with open(self.state_file, 'r') as f:
+                        state = json.load(f)
+                        if 'cookies' in state and len(state['cookies']) > 0:
+                            context.add_cookies(state['cookies'])
+                            print(f"  🔧 Injected {len(state['cookies'])} cookies from state.json")
+                except Exception as e:
+                    print(f"  ⚠️  Could not load state.json: {e}")
 
             # Try to access NotebookLM
             page = context.new_page()
@@ -272,10 +305,16 @@ class AuthManager:
             return False
 
         finally:
-            if browser:
-                browser.close()
+            if context:
+                try:
+                    context.close()
+                except Exception:
+                    pass
             if playwright:
-                playwright.stop()
+                try:
+                    playwright.stop()
+                except Exception:
+                    pass
 
 
 def main():

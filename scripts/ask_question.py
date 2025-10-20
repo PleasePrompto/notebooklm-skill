@@ -2,9 +2,15 @@
 """
 Simple NotebookLM Question Interface
 Based on MCP server implementation - simplified without sessions
+
+Implements hybrid auth approach:
+- Persistent browser profile (user_data_dir) for fingerprint consistency
+- Manual cookie injection from state.json for session cookies (Playwright bug workaround)
+See: https://github.com/microsoft/playwright/issues/36139
 """
 
 import argparse
+import json
 import re
 import sys
 import time
@@ -72,20 +78,45 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Start playwright
         playwright = sync_playwright().start()
 
-        # Launch browser with saved auth
+        # Launch persistent browser context with real Chrome (not Chromium)
+        # This ensures consistent browser fingerprinting and cross-platform reliability
+        # Using the same browser profile maintains Google's trust signals
+        # Note: In Python, we can't pass storage_state to launch_persistent_context (unlike TypeScript)
+        # See: https://github.com/microsoft/playwright/issues/14949
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=str(auth.browser_state_dir / "browser_profile"),
+            channel="chrome",  # Use real Chrome for reliability (install: patchright install chrome)
             headless=headless,
-            viewport={'width': 1024, 'height': 768},
+            no_viewport=True,  # Recommended by Patchright for anti-detection
+            ignore_default_args=["--enable-automation"],  # Remove automation infobar
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             args=[
-                '--disable-blink-features=AutomationControlled',
+                '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
                 '--disable-dev-shm-usage',
                 '--no-sandbox',
                 '--no-first-run',
                 '--no-default-browser-check'
             ]
         )
+
+        # WORKAROUND: Manually inject cookies from state.json for session cookie persistence
+        # This fixes Playwright bug #36139 where session cookies don't persist in user_data_dir
+        # The browser profile handles persistent cookies, but session cookies need manual injection
+        if auth.state_file.exists():
+            try:
+                print("  🔧 Loading authentication state...")
+                with open(auth.state_file, 'r') as f:
+                    state = json.load(f)
+                    if 'cookies' in state and len(state['cookies']) > 0:
+                        # Add cookies to the already-launched context
+                        # This ensures session cookies (expires=-1) are loaded correctly
+                        context.add_cookies(state['cookies'])
+                        print(f"  ✅ Injected {len(state['cookies'])} cookies from state.json")
+                    else:
+                        print("  ⚠️  No cookies found in state.json")
+            except Exception as e:
+                print(f"  ⚠️  Could not load state.json: {e}")
+                print("  💡 Continuing with browser profile cookies only...")
 
         # Navigate to notebook
         page = context.new_page()
