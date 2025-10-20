@@ -75,6 +75,8 @@ def main():
 
     if not script_path.exists():
         print(f"❌ Script not found: {script_name}")
+        print(f"   Working directory: {Path.cwd()}")
+        print(f"   Skill directory: {skill_dir}")
         print(f"   Looked for: {script_path}")
         sys.exit(1)
 

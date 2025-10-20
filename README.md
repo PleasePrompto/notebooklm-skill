@@ -2,14 +2,14 @@
 
 # NotebookLM Claude Code Skill
 
-**Let [Claude Code](https://github.com/anthropics/claude-code) chat directly with NotebookLM for zero-hallucination answers based on your own notebooks**
+**Let [Claude Code](https://github.com/anthropics/claude-code) chat directly with NotebookLM for source-grounded answers based exclusively on your uploaded documents**
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-purple.svg)](https://www.anthropic.com/news/skills)
 [![Based on](https://img.shields.io/badge/Based%20on-NotebookLM%20MCP-green.svg)](https://github.com/PleasePrompto/notebooklm-mcp)
 [![GitHub](https://img.shields.io/github/stars/PleasePrompto/notebooklm-skill?style=social)](https://github.com/PleasePrompto/notebooklm-skill)
 
-> Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Zero hallucinations, just your knowledge base.
+> Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Drastically reduced hallucinations - answers only from your uploaded documents.
 
 [Installation](#installation) • [Quick Start](#quick-start) • [Why NotebookLM](#why-notebooklm-not-local-rag) • [How It Works](#how-it-works) • [MCP Alternative](https://github.com/PleasePrompto/notebooklm-mcp)
 
@@ -35,7 +35,7 @@ When you tell [Claude Code](https://github.com/anthropics/claude-code) to "searc
 
 ## The Solution
 
-This Claude Code Skill lets [Claude Code](https://github.com/anthropics/claude-code) chat directly with [**NotebookLM**](https://notebooklm.google/) — Google's **zero-hallucination knowledge base** powered by Gemini 2.5 that provides intelligent, synthesized answers from your docs.
+This Claude Code Skill lets [Claude Code](https://github.com/anthropics/claude-code) chat directly with [**NotebookLM**](https://notebooklm.google/) — Google's **source-grounded knowledge base** powered by Gemini 2.5 that provides intelligent, synthesized answers exclusively from your uploaded documents.
 
 ```
 Your Task → Claude asks NotebookLM → Gemini synthesizes answer → Claude writes correct code
@@ -52,7 +52,7 @@ Your Task → Claude asks NotebookLM → Gemini synthesizes answer → Claude wr
 | **Feed docs to Claude** | 🔴 Very high (multiple file reads) | Instant | Yes - fills gaps | Variable retrieval |
 | **Web search** | 🟡 Medium | Instant | High - unreliable sources | Hit or miss |
 | **Local RAG** | 🟡 Medium-High | Hours (embeddings, chunking) | Medium - retrieval gaps | Depends on setup |
-| **NotebookLM Skill** | 🟢 Minimal | 5 minutes | **Zero** - refuses if unknown | Expert synthesis |
+| **NotebookLM Skill** | 🟢 Minimal | 5 minutes | **Minimal** - source-grounded only | Expert synthesis |
 
 ### What Makes NotebookLM Superior?
 
@@ -118,10 +118,16 @@ Share: **⚙️ Share → Anyone with link → Copy**
 
 ### 4. Add to your library
 
+**Option A: Let Claude figure it out (Smart Add)**
+```
+"Query this notebook about its content and add it to my library: [your-link]"
+```
+Claude will automatically query the notebook to discover its content, then add it with appropriate metadata.
+
+**Option B: Manual add**
 ```
 "Add this NotebookLM to my library: [your-link]"
 ```
-
 Claude will ask for a name and topics, then save it for future use.
 
 ### 5. Start researching
@@ -173,8 +179,8 @@ When you mention NotebookLM or send a notebook URL, Claude:
 
 ## Core Features
 
-### **Zero Hallucinations**
-NotebookLM refuses to answer if information isn't in your docs. No invented APIs.
+### **Source-Grounded Responses**
+NotebookLM significantly reduces hallucinations by answering exclusively from your uploaded documents. If information isn't available, it indicates uncertainty rather than inventing content.
 
 ### **Direct Integration**
 No copy-paste between browser and editor. Claude asks and receives answers programmatically.
@@ -399,6 +405,6 @@ git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 
 Built as a Claude Code Skill adaptation of my [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
 
-For zero-hallucination research directly in Claude Code
+For source-grounded, document-based research directly in Claude Code
 
 </div>

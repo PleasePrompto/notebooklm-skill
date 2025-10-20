@@ -37,33 +37,45 @@ python scripts/run.py notebook_manager.py add \
 **Critical Notes:**
 - Virtual environment created automatically by run.py
 - Browser MUST be visible for authentication
-- ALWAYS ask user for notebook metadata if unknown
+- ALWAYS discover content via query OR ask user for notebook metadata
 
-## Pattern 2: Adding Notebooks (ASK FIRST!)
+## Pattern 2: Adding Notebooks (Smart Discovery!)
 
 **When user shares a NotebookLM URL:**
 
-```python
-# 1. Check if already in library
-python scripts/run.py notebook_manager.py list
+**OPTION A: Smart Discovery (Recommended)**
+```bash
+# 1. Query the notebook to discover its content
+python scripts/run.py ask_question.py \
+  --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" \
+  --notebook-url "[URL]"
 
-# 2. If not found, ASK USER for metadata:
+# 2. Use discovered info to add it
+python scripts/run.py notebook_manager.py add \
+  --url "[URL]" \
+  --name "[Based on content]" \
+  --description "[From discovery]" \
+  --topics "[Extracted topics]"
+```
+
+**OPTION B: Ask User (Fallback)**
+```bash
+# If discovery fails, ask user:
 "What does this notebook contain?"
-"What should I name it?"
 "What topics does it cover?"
 
-# 3. Only then add with user-provided info:
+# Then add with user-provided info:
 python scripts/run.py notebook_manager.py add \
-  --url "provided_url" \
-  --name "User's answer" \
-  --description "User's description" \
-  --topics "user,specified,topics"
+  --url "[URL]" \
+  --name "[User's answer]" \
+  --description "[User's description]" \
+  --topics "[User's topics]"
 ```
 
 **NEVER:**
 - Guess what's in a notebook
-- Use generic descriptions like "documentation"
-- Skip asking for description/topics
+- Use generic descriptions
+- Skip discovering content
 
 ## Pattern 3: Daily Research Workflow
 

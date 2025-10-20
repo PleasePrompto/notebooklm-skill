@@ -1,11 +1,11 @@
 ---
 name: notebooklm
-description: Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Zero hallucinations, just your knowledge base.
+description: Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Drastically reduced hallucinations through document-only responses.
 ---
 
 # NotebookLM Research Assistant Skill
 
-Interact with Google NotebookLM to query documentation with Gemini's zero-hallucination answers. Each question opens a fresh browser session, retrieves the answer, and closes.
+Interact with Google NotebookLM to query documentation with Gemini's source-grounded answers. Each question opens a fresh browser session, retrieves the answer exclusively from your uploaded documents, and closes.
 
 ## When to Use This Skill
 
@@ -16,20 +16,26 @@ Trigger when user:
 - Wants to add documentation to NotebookLM library
 - Uses phrases like "ask my NotebookLM", "check my docs", "query my notebook"
 
-## ⚠️ CRITICAL: Add Command Requirements
+## ⚠️ CRITICAL: Add Command - Smart Discovery
 
-When adding a notebook, these parameters are **ALL REQUIRED**:
+When user wants to add a notebook without providing details:
+
+**SMART ADD (Recommended)**: Query the notebook first to discover its content:
+```bash
+# Step 1: Query the notebook about its content
+python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
+
+# Step 2: Use the discovered information to add it
+python scripts/run.py notebook_manager.py add --url "[URL]" --name "[Based on content]" --description "[Based on content]" --topics "[Based on content]"
+```
+
+**MANUAL ADD**: If user provides all details:
 - `--url` - The NotebookLM URL
 - `--name` - A descriptive name
-- `--description` - What the notebook contains (CANNOT BE OMITTED!)
-- `--topics` - Comma-separated topics (CANNOT BE OMITTED!)
+- `--description` - What the notebook contains (REQUIRED!)
+- `--topics` - Comma-separated topics (REQUIRED!)
 
-**If you don't know what's in the notebook, ASK THE USER FIRST:**
-```
-"What does this notebook contain and what topics does it cover?"
-"Please describe what's in this notebook so I can add it to the library."
-```
-NEVER guess or use generic descriptions like "notebook" or "documentation"!
+NEVER guess or use generic descriptions! If details missing, use Smart Add to discover them.
 
 ## Critical: Always Use run.py Wrapper
 
@@ -67,7 +73,7 @@ python scripts/run.py auth_manager.py setup
 ```
 
 **Important:**
-- NEVER use `--headless` for authentication
+- Browser is VISIBLE for authentication
 - Browser window opens automatically
 - User must manually log in to Google
 - Tell user: "A browser window will open for Google login"
@@ -99,10 +105,14 @@ python scripts/run.py notebook_manager.py activate --id notebook-id
 python scripts/run.py notebook_manager.py remove --id notebook-id
 ```
 
+### Quick Workflow
+1. Check library: `python scripts/run.py notebook_manager.py list`
+2. Ask question: `python scripts/run.py ask_question.py --question "..." --notebook-id ID`
+
 ### Step 4: Ask Questions
 
 ```bash
-# Basic query
+# Basic query (uses active notebook if set)
 python scripts/run.py ask_question.py --question "Your question here"
 
 # Query specific notebook
@@ -224,7 +234,7 @@ Synthesize and respond to user
 | Problem | Solution |
 |---------|----------|
 | ModuleNotFoundError | Use `run.py` wrapper |
-| Authentication fails | Browser must be visible, no `--headless` |
+| Authentication fails | Browser must be visible for setup! --show-browser |
 | Rate limit (50/day) | Wait or switch Google account |
 | Browser crashes | `python scripts/run.py cleanup_manager.py --preserve-library` |
 | Notebook not found | Check with `notebook_manager.py list` |
@@ -245,12 +255,15 @@ Synthesize and respond to user
 - Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
 
-## Resources
+## Resources (Skill Structure)
 
-- `scripts/` - All automation scripts
-- `data/` - Local storage (auth, notebooks)
-- `references/` - Extended documentation
-- `.venv/` - Isolated Python environment
-- `.gitignore` - Protects sensitive data
+**Important directories and files:**
 
-Based on [notebooklm-mcp](https://github.com/PleasePrompto/notebooklm-mcp) adapted for local execution.
+- `scripts/` - All automation scripts (ask_question.py, notebook_manager.py, etc.)
+- `data/` - Local storage for authentication and notebook library
+- `references/` - Extended documentation:
+  - `api_reference.md` - Detailed API documentation for all scripts
+  - `troubleshooting.md` - Common issues and solutions
+  - `usage_patterns.md` - Best practices and workflow examples
+- `.venv/` - Isolated Python environment (auto-created on first run)
+- `.gitignore` - Protects sensitive data from being committed

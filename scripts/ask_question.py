@@ -218,8 +218,26 @@ def main():
             return 1
 
     if not notebook_url:
-        print("❌ Please provide --notebook-url or --notebook-id")
-        return 1
+        # Check for active notebook first
+        library = NotebookLibrary()
+        active = library.get_active_notebook()
+        if active:
+            notebook_url = active['url']
+            print(f"📚 Using active notebook: {active['name']}")
+        else:
+            # Show available notebooks
+            notebooks = library.list_notebooks()
+            if notebooks:
+                print("\n📚 Available notebooks:")
+                for nb in notebooks:
+                    mark = " [ACTIVE]" if nb.get('id') == library.active_notebook_id else ""
+                    print(f"  {nb['id']}: {nb['name']}{mark}")
+                print("\nSpecify with --notebook-id or set active:")
+                print("python scripts/run.py notebook_manager.py activate --id ID")
+            else:
+                print("❌ No notebooks in library. Add one first:")
+                print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
+            return 1
 
     # Ask the question
     answer = ask_notebooklm(

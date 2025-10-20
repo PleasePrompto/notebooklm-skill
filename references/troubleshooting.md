@@ -5,7 +5,7 @@
 | Error | Solution |
 |-------|----------|
 | ModuleNotFoundError | Use `python scripts/run.py [script].py` |
-| Authentication failed | Browser must be visible, no --headless |
+| Authentication failed | Browser must be visible for setup |
 | Browser crash | `python scripts/run.py cleanup_manager.py --preserve-library` |
 | Rate limit hit | Wait 1 hour or switch accounts |
 | Notebook not found | `python scripts/run.py notebook_manager.py list` |
@@ -67,7 +67,7 @@ export PERSIST_AUTH=true
 ```bash
 python scripts/run.py auth_manager.py setup
 # Browser MUST be visible - user logs in manually
-# NEVER use --headless for authentication!
+# NO headless parameter exists - use --show-browser for debugging
 ```
 
 ### Browser Issues
