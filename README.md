@@ -82,24 +82,11 @@ git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 
 When you first use the skill, it automatically:
 - Creates an isolated Python environment (`.venv`)
-- Installs all dependencies
-- Sets up browser automation
+- Installs all dependencies including **Google Chrome**
+- Sets up browser automation with Chrome (not Chromium) for maximum reliability
 - Everything stays contained in the skill folder
 
-### Important: Chrome Installation
-
-This skill uses **real Google Chrome** (not Chromium) for maximum reliability and consistent browser fingerprinting. After cloning the repository, install Chrome:
-
-```bash
-cd ~/.claude/skills/notebooklm
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-patchright install chrome
-```
-
-**Why Chrome and not Chromium?**
-- ✅ Cross-platform reliability (fixes auth issues on some systems)
-- ✅ Consistent browser identity for Google services
-- ✅ Better anti-detection (Patchright best practice)
+**Note:** The setup uses real Chrome instead of Chromium for cross-platform reliability, consistent browser fingerprinting, and better anti-detection with Google services
 
 ---
 
