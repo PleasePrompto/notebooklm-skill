@@ -10,10 +10,9 @@ See: https://github.com/microsoft/playwright/issues/36139
 """
 
 import argparse
-import json
-import re
 import sys
 import time
+import re
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -23,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
-from browser_session import StealthUtils
+from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
+from browser_utils import BrowserFactory, StealthUtils
 
 
 # Follow-up reminder (adapted from MCP server for stateless operation)
@@ -35,19 +35,6 @@ FOLLOW_UP_REMINDER = (
     "If anything is still unclear or missing, ask me another comprehensive question "
     "that includes all necessary context (since each question opens a new browser session)."
 )
-
-
-# MCP Server selectors (exact match!)
-QUERY_INPUT_SELECTORS = [
-    "textarea.query-box-input",  # Primary
-    'textarea[aria-label="Feld für Anfragen"]',  # Fallback
-]
-
-RESPONSE_SELECTORS = [
-    ".to-user-container .message-text-content",  # Primary
-    "[data-message-author='bot']",
-    "[data-message-author='assistant']",
-]
 
 
 def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
@@ -78,45 +65,11 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Start playwright
         playwright = sync_playwright().start()
 
-        # Launch persistent browser context with real Chrome (not Chromium)
-        # This ensures consistent browser fingerprinting and cross-platform reliability
-        # Using the same browser profile maintains Google's trust signals
-        # Note: In Python, we can't pass storage_state to launch_persistent_context (unlike TypeScript)
-        # See: https://github.com/microsoft/playwright/issues/14949
-        context = playwright.chromium.launch_persistent_context(
-            user_data_dir=str(auth.browser_state_dir / "browser_profile"),
-            channel="chrome",  # Use real Chrome for reliability (install: patchright install chrome)
-            headless=headless,
-            no_viewport=True,  # Recommended by Patchright for anti-detection
-            ignore_default_args=["--enable-automation"],  # Remove automation infobar
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            args=[
-                '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
-                '--disable-dev-shm-usage',
-                '--no-sandbox',
-                '--no-first-run',
-                '--no-default-browser-check'
-            ]
+        # Launch persistent browser context using factory
+        context = BrowserFactory.launch_persistent_context(
+            playwright,
+            headless=headless
         )
-
-        # WORKAROUND: Manually inject cookies from state.json for session cookie persistence
-        # This fixes Playwright bug #36139 where session cookies don't persist in user_data_dir
-        # The browser profile handles persistent cookies, but session cookies need manual injection
-        if auth.state_file.exists():
-            try:
-                print("  🔧 Loading authentication state...")
-                with open(auth.state_file, 'r') as f:
-                    state = json.load(f)
-                    if 'cookies' in state and len(state['cookies']) > 0:
-                        # Add cookies to the already-launched context
-                        # This ensures session cookies (expires=-1) are loaded correctly
-                        context.add_cookies(state['cookies'])
-                        print(f"  ✅ Injected {len(state['cookies'])} cookies from state.json")
-                    else:
-                        print("  ⚠️  No cookies found in state.json")
-            except Exception as e:
-                print(f"  ⚠️  Could not load state.json: {e}")
-                print("  💡 Continuing with browser profile cookies only...")
 
         # Navigate to notebook
         page = context.new_page()
@@ -149,18 +102,17 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
         # Type question (human-like, fast)
         print("  ⏳ Typing question...")
-        # Click the input first
-        page.click(QUERY_INPUT_SELECTORS[0])
-        time.sleep(0.5)
-        # Type with delay for human-like behavior
-        page.type(QUERY_INPUT_SELECTORS[0], question, delay=50)
+        
+        # Use primary selector for typing
+        input_selector = QUERY_INPUT_SELECTORS[0]
+        StealthUtils.human_type(page, input_selector, question)
 
         # Submit
         print("  📤 Submitting...")
         page.keyboard.press("Enter")
 
         # Small pause
-        time.sleep(1)
+        StealthUtils.random_delay(500, 1500)
 
         # Wait for response (MCP approach: poll for stable text)
         print("  ⏳ Waiting for answer...")
@@ -171,6 +123,15 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         deadline = time.time() + 120  # 2 minutes timeout
 
         while time.time() < deadline:
+            # Check if NotebookLM is still thinking (most reliable indicator)
+            try:
+                thinking_element = page.query_selector('div.thinking-message')
+                if thinking_element and thinking_element.is_visible():
+                    time.sleep(1)
+                    continue
+            except:
+                pass
+
             # Try to find response with MCP selectors
             for selector in RESPONSE_SELECTORS:
                 try:
@@ -180,7 +141,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                         latest = elements[-1]
                         text = latest.inner_text().strip()
 
-                        if text and len(text) > 10:  # Ignore placeholders
+                        if text:
                             if text == last_text:
                                 stable_count += 1
                                 if stable_count >= 3:  # Stable for 3 polls

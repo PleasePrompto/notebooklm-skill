@@ -15,10 +15,17 @@ import time
 import argparse
 import shutil
 import re
+import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from patchright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from patchright.sync_api import sync_playwright, BrowserContext
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
+from browser_utils import BrowserFactory
 
 
 class AuthManager:
@@ -34,16 +41,13 @@ class AuthManager:
 
     def __init__(self):
         """Initialize the authentication manager"""
-        # Store data within the skill directory
-        skill_dir = Path(__file__).parent.parent
-        self.data_dir = skill_dir / "data"
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure directories exist
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        BROWSER_STATE_DIR.mkdir(parents=True, exist_ok=True)
 
-        self.browser_state_dir = self.data_dir / "browser_state"
-        self.browser_state_dir.mkdir(parents=True, exist_ok=True)
-
-        self.state_file = self.browser_state_dir / "state.json"
-        self.auth_info_file = self.data_dir / "auth_info.json"
+        self.state_file = STATE_FILE
+        self.auth_info_file = AUTH_INFO_FILE
+        self.browser_state_dir = BROWSER_STATE_DIR
 
     def is_authenticated(self) -> bool:
         """Check if valid authentication exists"""
@@ -97,25 +101,12 @@ class AuthManager:
         context = None
 
         try:
-            # Launch persistent browser context with real Chrome (not Chromium)
-            # Using channel="chrome" ensures cross-platform reliability and consistent browser fingerprinting
-            # See: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python#anti-detection
             playwright = sync_playwright().start()
 
-            context = playwright.chromium.launch_persistent_context(
-                user_data_dir=str(self.browser_state_dir / "browser_profile"),
-                channel="chrome",  # Use real Chrome for reliability (install: patchright install chrome)
-                headless=headless,
-                no_viewport=True,  # Recommended by Patchright for anti-detection
-                ignore_default_args=["--enable-automation"],  # Remove automation infobar
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                args=[
-                    '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--no-first-run',
-                    '--no-default-browser-check'
-                ]
+            # Launch using factory
+            context = BrowserFactory.launch_persistent_context(
+                playwright,
+                headless=headless
             )
 
             # Navigate to NotebookLM
@@ -171,7 +162,7 @@ class AuthManager:
         try:
             # Save storage state (cookies, localStorage)
             context.storage_state(path=str(self.state_file))
-            print(f"  💾 Saved browser state to: {self.state_file.relative_to(self.data_dir.parent)}")
+            print(f"  💾 Saved browser state to: {self.state_file}")
         except Exception as e:
             print(f"  ❌ Failed to save browser state: {e}")
             raise
@@ -256,37 +247,13 @@ class AuthManager:
         context = None
 
         try:
-            # Start playwright
             playwright = sync_playwright().start()
 
-            # Launch persistent context (same as setup_auth and ask_question)
-            context = playwright.chromium.launch_persistent_context(
-                user_data_dir=str(self.browser_state_dir / "browser_profile"),
-                channel="chrome",
-                headless=True,
-                no_viewport=True,
-                ignore_default_args=["--enable-automation"],  # Remove automation infobar
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                args=[
-                    '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--no-first-run',
-                    '--no-default-browser-check'
-                ]
+            # Launch using factory
+            context = BrowserFactory.launch_persistent_context(
+                playwright,
+                headless=True
             )
-
-            # WORKAROUND: Manually inject cookies from state.json for session cookie persistence
-            # This fixes Playwright bug #36139 where session cookies don't persist in user_data_dir
-            if self.state_file.exists():
-                try:
-                    with open(self.state_file, 'r') as f:
-                        state = json.load(f)
-                        if 'cookies' in state and len(state['cookies']) > 0:
-                            context.add_cookies(state['cookies'])
-                            print(f"  🔧 Injected {len(state['cookies'])} cookies from state.json")
-                except Exception as e:
-                    print(f"  ⚠️  Could not load state.json: {e}")
 
             # Try to access NotebookLM
             page = context.new_page()

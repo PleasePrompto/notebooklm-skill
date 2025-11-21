@@ -6,82 +6,16 @@ Based on the original NotebookLM API implementation
 """
 
 import time
-import random
+import sys
 from typing import Any, Dict, Optional
 from pathlib import Path
 
-from patchright.sync_api import sync_playwright, BrowserContext, Page
-from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
+from patchright.sync_api import BrowserContext, Page
 
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent))
 
-class StealthUtils:
-    """Human-like interaction utilities for browser automation"""
-
-    @staticmethod
-    def random_delay(min_ms: int = 100, max_ms: int = 500):
-        """Add random delay between actions"""
-        time.sleep(random.uniform(min_ms / 1000, max_ms / 1000))
-
-    @staticmethod
-    def human_type(page: Page, selector: str, text: str, wpm_min: int = 320, wpm_max: int = 480):
-        """Type with human-like speed and variation"""
-        element = page.query_selector(selector)
-        if not element:
-            raise ValueError(f"Element not found: {selector}")
-
-        element.click()
-
-        # Calculate typing speed (doubled from 160-240 to 320-480 WPM)
-        wpm = random.uniform(wpm_min, wpm_max)
-        chars_per_second = (wpm * 5) / 60  # Average word = 5 chars
-
-        for char in text:
-            # Reduced delay from 50-150ms to 25-75ms (doubled speed)
-            element.type(char, delay=random.uniform(25, 75))
-
-            # Less frequent pauses (5% instead of 10%)
-            if random.random() < 0.05:
-                time.sleep(random.uniform(0.15, 0.4))
-
-    @staticmethod
-    def random_mouse_movement(page: Page, target_x: Optional[float] = None, target_y: Optional[float] = None):
-        """Move mouse with natural curves and speed variations"""
-        viewport = page.viewport_size
-        if not viewport:
-            return
-
-        # Random target if not specified
-        if target_x is None:
-            target_x = random.uniform(100, viewport['width'] - 100)
-        if target_y is None:
-            target_y = random.uniform(100, viewport['height'] - 100)
-
-        # Move with small steps for natural movement
-        steps = random.randint(3, 7)
-        for i in range(steps):
-            intermediate_x = target_x * (i + 1) / steps
-            intermediate_y = target_y * (i + 1) / steps
-            page.mouse.move(intermediate_x, intermediate_y)
-            time.sleep(random.uniform(0.01, 0.03))
-
-    @staticmethod
-    def realistic_click(page: Page, selector: str):
-        """Click with realistic mouse movement and timing"""
-        element = page.query_selector(selector)
-        if not element:
-            raise ValueError(f"Element not found: {selector}")
-
-        box = element.bounding_box()
-        if box:
-            # Move to element with natural movement
-            target_x = box['x'] + box['width'] / 2 + random.uniform(-5, 5)
-            target_y = box['y'] + box['height'] / 2 + random.uniform(-5, 5)
-            StealthUtils.random_mouse_movement(page, target_x, target_y)
-
-        # Small delay before click
-        StealthUtils.random_delay(100, 300)
-        element.click()
-        StealthUtils.random_delay(100, 300)
+from browser_utils import StealthUtils
 
 
 class BrowserSession:
@@ -223,35 +157,47 @@ class BrowserSession:
     def _snapshot_latest_response(self) -> Optional[str]:
         """Get the current latest response text"""
         try:
-            # Try to find last response
-            responses = self.page.query_selector_all(".response-content, .message-content")
+            # Use correct NotebookLM selector
+            responses = self.page.query_selector_all(".to-user-container .message-text-content")
             if responses:
                 return responses[-1].inner_text()
         except Exception:
             pass
         return None
 
-    def _wait_for_latest_answer(self, previous_answer: Optional[str], timeout: int = 30) -> str:
+    def _wait_for_latest_answer(self, previous_answer: Optional[str], timeout: int = 120) -> str:
         """Wait for and extract the new answer"""
         start_time = time.time()
+        last_candidate = None
+        stable_count = 0
 
         while time.time() - start_time < timeout:
+            # Check if NotebookLM is still thinking (most reliable indicator)
             try:
-                # Look for response elements
-                responses = self.page.query_selector_all(".response-content, .message-content, .query-response")
+                thinking_element = self.page.query_selector('div.thinking-message')
+                if thinking_element and thinking_element.is_visible():
+                    time.sleep(0.5)
+                    continue
+            except Exception:
+                pass
+
+            try:
+                # Use correct NotebookLM selector
+                responses = self.page.query_selector_all(".to-user-container .message-text-content")
 
                 if responses:
-                    latest_text = responses[-1].inner_text()
+                    latest_text = responses[-1].inner_text().strip()
 
                     # Check if it's a new response
                     if latest_text and latest_text != previous_answer:
-                        # Wait a bit more to ensure complete
-                        time.sleep(1)
-
-                        # Check if still updating
-                        updated_text = responses[-1].inner_text()
-                        if updated_text == latest_text:
-                            return updated_text
+                        # Check if text is stable (3 consecutive polls)
+                        if latest_text == last_candidate:
+                            stable_count += 1
+                            if stable_count >= 3:
+                                return latest_text
+                        else:
+                            stable_count = 1
+                            last_candidate = latest_text
 
             except Exception:
                 pass
