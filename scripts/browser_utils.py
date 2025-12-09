@@ -105,3 +105,93 @@ class StealthUtils:
         StealthUtils.random_delay(100, 300)
         element.click()
         StealthUtils.random_delay(100, 300)
+
+
+class DownloadHandler:
+    """Handles file downloads from browser"""
+
+    @staticmethod
+    def setup_download_dir(context: BrowserContext, download_dir: str):
+        """
+        Note: Patchright/Playwright handles downloads via events.
+        This is a placeholder for any pre-configuration if needed.
+        """
+        pass
+
+    @staticmethod
+    def wait_for_download(page: Page, trigger_action, download_dir: str, timeout: int = 60000) -> Optional[str]:
+        """
+        Wait for download to complete after triggering an action.
+
+        Args:
+            page: The browser page
+            trigger_action: A callable that triggers the download (e.g., clicking download button)
+            download_dir: Directory to save the downloaded file
+            timeout: Maximum time to wait in milliseconds
+
+        Returns:
+            Path to the downloaded file, or None if failed
+        """
+        from pathlib import Path
+
+        download_path = None
+
+        try:
+            # Set up download handler
+            with page.expect_download(timeout=timeout) as download_info:
+                # Execute the action that triggers download
+                trigger_action()
+
+            download = download_info.value
+
+            # Get suggested filename
+            suggested_filename = download.suggested_filename
+
+            # Save to specified directory
+            save_path = Path(download_dir) / suggested_filename
+            download.save_as(str(save_path))
+
+            print(f"  💾 Downloaded: {save_path}")
+            download_path = str(save_path)
+
+        except Exception as e:
+            print(f"  ❌ Download failed: {e}")
+
+        return download_path
+
+    @staticmethod
+    def download_with_custom_name(page: Page, trigger_action, download_dir: str, filename: str, timeout: int = 60000) -> Optional[str]:
+        """
+        Download file with a custom filename.
+
+        Args:
+            page: The browser page
+            trigger_action: A callable that triggers the download
+            download_dir: Directory to save the downloaded file
+            filename: Custom filename to use
+            timeout: Maximum time to wait in milliseconds
+
+        Returns:
+            Path to the downloaded file, or None if failed
+        """
+        from pathlib import Path
+
+        download_path = None
+
+        try:
+            with page.expect_download(timeout=timeout) as download_info:
+                trigger_action()
+
+            download = download_info.value
+
+            # Save with custom filename
+            save_path = Path(download_dir) / filename
+            download.save_as(str(save_path))
+
+            print(f"  💾 Downloaded: {save_path}")
+            download_path = str(save_path)
+
+        except Exception as e:
+            print(f"  ❌ Download failed: {e}")
+
+        return download_path
