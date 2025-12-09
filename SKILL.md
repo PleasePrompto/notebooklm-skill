@@ -15,6 +15,10 @@ Trigger when user:
 - Asks to query their notebooks/documentation
 - Wants to add documentation to NotebookLM library
 - Uses phrases like "ask my NotebookLM", "check my docs", "query my notebook"
+- Wants to create a new notebook
+- Wants to add sources (URLs, text) to a notebook
+- Wants to generate an Audio Overview / podcast from their notebook
+- Wants to download NotebookLM audio
 
 ## ⚠️ CRITICAL: Add Command - Smart Discovery
 
@@ -172,6 +176,85 @@ python scripts/run.py cleanup_manager.py --confirm          # Execute cleanup
 python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 ```
 
+### Create Notebooks (`notebook_creator.py`)
+```bash
+# Create a new notebook
+python scripts/run.py notebook_creator.py
+
+# Create with a custom name
+python scripts/run.py notebook_creator.py --name "My Research Notebook"
+
+# Show browser for debugging
+python scripts/run.py notebook_creator.py --name "Test" --show-browser
+```
+
+### Add Sources (`source_manager.py`)
+```bash
+# Add a URL source
+python scripts/run.py source_manager.py add-url \
+  --notebook-url "https://notebooklm.google.com/notebook/..." \
+  --source-url "https://example.com/article"
+
+# Add text content directly
+python scripts/run.py source_manager.py add-text \
+  --notebook-url "https://notebooklm.google.com/notebook/..." \
+  --title "My Notes" \
+  --content "Your text content here..."
+
+# Add text from a file
+python scripts/run.py source_manager.py add-text \
+  --notebook-url "https://notebooklm.google.com/notebook/..." \
+  --title "Research Paper" \
+  --file /path/to/content.txt
+
+# Show browser for debugging
+python scripts/run.py source_manager.py add-url \
+  --notebook-url URL --source-url URL --show-browser
+```
+
+### Generate Audio Overview (`audio_generator.py`)
+```bash
+# Basic audio generation (default: Deep Dive format, default length)
+python scripts/run.py audio_generator.py \
+  --notebook-url "https://notebooklm.google.com/notebook/..."
+
+# With custom format and length
+python scripts/run.py audio_generator.py \
+  --notebook-url URL \
+  --format brief \        # Options: deep_dive, brief, critique, debate
+  --length long           # Options: short, default, long
+
+# With custom instructions for AI hosts
+python scripts/run.py audio_generator.py \
+  --notebook-url URL \
+  --instructions "Focus on the key technical concepts for software developers"
+
+# Full customization with custom output filename
+python scripts/run.py audio_generator.py \
+  --notebook-url URL \
+  --format deep_dive \
+  --length long \
+  --instructions "Explain like I'm a beginner" \
+  --output my_podcast.wav
+
+# Show browser for debugging (useful for troubleshooting)
+python scripts/run.py audio_generator.py \
+  --notebook-url URL --show-browser
+```
+
+**Audio Format Options:**
+- `deep_dive` - A lively conversation between two hosts, unpacking and connecting topics (default)
+- `brief` - A bite-sized overview to grasp core ideas quickly
+- `critique` - An expert review with constructive feedback
+- `debate` - A thoughtful debate illuminating different perspectives
+
+**Audio Length Options:**
+- `short` - Shorter audio overview
+- `default` - Standard length (default)
+- `long` - Extended deep dive
+
+**Note:** Audio generation can take 5-10 minutes. The script will wait and show progress updates.
+
 ## Environment Management
 
 The virtual environment is automatically managed:
@@ -252,8 +335,9 @@ Synthesize and respond to user
 
 - No session persistence (each question = new browser)
 - Rate limits on free Google accounts (50 queries/day)
-- Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
+- Audio generation can take 5-10 minutes
+- File uploads (PDF, Google Docs) not yet supported - use URLs or paste text instead
 
 ## Resources (Skill Structure)
 
