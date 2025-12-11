@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2025-12-11
+
+### Added
+- **Add Source Feature** - New `add_source.py` script to add sources directly to NotebookLM notebooks
+  - `--text` - Paste text content directly as a source
+  - `--file` - Read text file and paste as source
+  - `--url` - Add website or YouTube URLs as sources
+  - Supports notebook library integration (`--notebook-id`)
+  - Debug mode with `--show-browser` flag
+
+- **New Selectors in config.py** - UI selectors for add source workflow
+  - `ADD_SOURCE_BUTTON_SELECTORS` - Find the add sources button
+  - `PASTE_TEXT_CHIP_SELECTORS` - Select "Copied text" option
+  - `PASTE_TEXT_TEXTAREA_SELECTORS` - Text input field
+  - `INSERT_BUTTON_SELECTORS` - Submit button
+  - Additional dialog navigation selectors
+
+### Changed
+- **SKILL.md Documentation** - Added comprehensive add source documentation
+  - New "Add Sources" section in Script Reference
+  - Detailed usage examples for all source types
+  - Updated limitations section
+
 ## [1.3.0] - 2025-11-21
 
 ### Added

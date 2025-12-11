@@ -165,6 +165,14 @@ python scripts/run.py notebook_manager.py stats
 python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
 ```
 
+### Add Sources (`add_source.py`)
+```bash
+python scripts/run.py add_source.py --notebook-url URL --text "content"      # Paste text
+python scripts/run.py add_source.py --notebook-url URL --file /path/to/file  # From file
+python scripts/run.py add_source.py --notebook-url URL --url "https://..."   # Website/YouTube
+python scripts/run.py add_source.py --notebook-id ID --text "content"        # Use library
+```
+
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
 python scripts/run.py cleanup_manager.py                    # Preview cleanup
@@ -248,12 +256,57 @@ Synthesize and respond to user
 5. **Include context** - Each question is independent
 6. **Synthesize answers** - Combine multiple responses
 
+## Adding Sources to Notebooks (`add_source.py`)
+
+Add sources directly to NotebookLM notebooks via browser automation.
+
+### Add Text Source
+```bash
+# Add text directly
+python scripts/run.py add_source.py --notebook-url URL --text "Your text content here"
+
+# Add text from a file
+python scripts/run.py add_source.py --notebook-url URL --file /path/to/document.txt
+
+# Use notebook from library
+python scripts/run.py add_source.py --notebook-id my-notebook --text "Content"
+
+# Show browser for debugging
+python scripts/run.py add_source.py --notebook-url URL --text "Content" --show-browser
+```
+
+### Add URL Source (Website/YouTube)
+```bash
+# Add a website
+python scripts/run.py add_source.py --notebook-url URL --url "https://example.com/article"
+
+# Add a YouTube video
+python scripts/run.py add_source.py --notebook-url URL --url "https://youtube.com/watch?v=..."
+```
+
+### Source Types Supported
+| Type | Flag | Notes |
+|------|------|-------|
+| **Paste Text** | `--text "..."` | Direct text content |
+| **Text File** | `--file path` | Reads file and pastes as text |
+| **Website** | `--url https://...` | Any web page URL |
+| **YouTube** | `--url https://youtube.com/...` | YouTube video URLs |
+
+### Workflow: Add Source Then Query
+```bash
+# 1. Add your content as a source
+python scripts/run.py add_source.py --notebook-id my-notebook --file ./documentation.md
+
+# 2. Query the notebook about the new content
+python scripts/run.py ask_question.py --notebook-id my-notebook --question "Summarize the key points"
+```
+
 ## Limitations
 
 - No session persistence (each question = new browser)
 - Rate limits on free Google accounts (50 queries/day)
-- Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
+- Large text sources may take time to process
 
 ## Resources (Skill Structure)
 
