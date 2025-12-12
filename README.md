@@ -2,6 +2,9 @@
 
 # NotebookLM Claude Code Skill
 
+[![Run in Smithery](https://smithery.ai/badge/skills/pleaseprompto)](https://smithery.ai/skills?ns=pleaseprompto&utm_source=github&utm_medium=badge)
+
+
 **Let [Claude Code](https://github.com/anthropics/claude-code) chat directly with NotebookLM for source-grounded answers based exclusively on your uploaded documents**
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
