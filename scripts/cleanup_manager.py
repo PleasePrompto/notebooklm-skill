@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = []
+# ///
 """
 Cleanup Manager for NotebookLM Skill
 Manages cleanup of skill data and browser state

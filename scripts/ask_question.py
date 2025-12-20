@@ -1,4 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "patchright==1.55.2",
+#     "python-dotenv==1.0.0",
+# ]
+# ///
 """
 Simple NotebookLM Question Interface
 Based on MCP server implementation - simplified without sessions
@@ -16,9 +23,6 @@ import re
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary

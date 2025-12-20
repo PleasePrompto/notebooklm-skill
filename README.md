@@ -66,27 +66,48 @@ Your Task → Claude asks NotebookLM → Gemini synthesizes answer → Claude wr
 
 ## Installation
 
-### The simplest installation ever:
+### Prerequisites
+
+**Install uv** (one-time):
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### Install Skill
 
 ```bash
-# 1. Create skills directory (if it doesn't exist)
 mkdir -p ~/.claude/skills
-
-# 2. Clone this repository
 cd ~/.claude/skills
 git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
+```
 
-# 3. That's it! Open Claude Code and say:
+**Unix/Mac only:**
+```bash
+cd notebooklm
+chmod +x scripts/*.py
+```
+
+That's it! Dependencies install automatically on first use.
+
+### First Run
+
+Tell Claude Code:
+```
 "What are my skills?"
 ```
 
-When you first use the skill, it automatically:
-- Creates an isolated Python environment (`.venv`)
-- Installs all dependencies including **Google Chrome**
-- Sets up browser automation with Chrome (not Chromium) for maximum reliability
-- Everything stays contained in the skill folder
+When you first use NotebookLM, dependencies install automatically:
+```bash
+./scripts/auth_manager.py status
+# Installing dependencies... (one-time, ~30 seconds)
+# ✅ Not authenticated
+```
 
-**Note:** The setup uses real Chrome instead of Chromium for cross-platform reliability, consistent browser fingerprinting, and better anti-detection with Google services
+**No manual venv setup needed** - uv handles everything.
 
 ---
 
@@ -254,9 +275,14 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 Note: The MCP server uses the same Patchright library but via TypeScript/npm ecosystem.
 
 ### Dependencies
+
+Dependencies are declared inline in each script using PEP 723 metadata:
+
+**Main scripts:**
 - **patchright==1.55.2**: Browser automation
 - **python-dotenv==1.0.0**: Environment configuration
-- Automatically installed in `.venv` on first use
+
+Automatically installed by uv on first run.
 
 ### Data Storage
 
@@ -342,12 +368,12 @@ Say: `"Clear NotebookLM browser data"`
 
 ### Dependencies issues
 ```bash
-# Manual reinstall if needed
-cd ~/.claude/skills/notebooklm
-rm -rf .venv
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
+# Dependencies are managed automatically by uv
+# If you encounter issues, ensure uv is installed:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Restart terminal and try again:
+./scripts/auth_manager.py status
 ```
 
 ---

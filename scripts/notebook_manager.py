@@ -1,4 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "python-dotenv==1.0.0",
+# ]
+# ///
 """
 Notebook Library Management for NotebookLM
 Manages a library of NotebookLM notebooks with metadata

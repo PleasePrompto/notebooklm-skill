@@ -2,17 +2,24 @@
 
 Complete API documentation for all NotebookLM skill modules.
 
-## Important: Always Use run.py Wrapper
+## Prerequisites
 
-**All commands must use the `run.py` wrapper to ensure proper environment:**
+**All commands require UV to be installed:**
 
 ```bash
-# ✅ CORRECT:
-python scripts/run.py [script_name].py [arguments]
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# ❌ WRONG:
-python scripts/[script_name].py [arguments]  # Will fail without venv!
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
+
+**Command patterns:**
+- **Unix/Mac**: `./scripts/script.py` (direct execution)
+- **All platforms**: `uv run scripts/script.py` (explicit uv)
+- **Windows**: `uv run scripts\script.py` (backslash paths)
+
+**First run**: Dependencies install automatically (~30 seconds, one-time)
 
 ## Core Scripts
 
@@ -20,17 +27,20 @@ python scripts/[script_name].py [arguments]  # Will fail without venv!
 Query NotebookLM with automated browser interaction.
 
 ```bash
-# Basic usage
-python scripts/run.py ask_question.py --question "Your question"
+# Basic usage (Unix/Mac)
+./scripts/ask_question.py --question "Your question"
+
+# All platforms
+uv run scripts/ask_question.py --question "Your question"
 
 # With specific notebook
-python scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
+./scripts/ask_question.py --question "..." --notebook-id notebook-id
 
 # With direct URL
-python scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
+./scripts/ask_question.py --question "..." --notebook-url "https://..."
 
 # Show browser (debugging)
-python scripts/run.py ask_question.py --question "..." --show-browser
+./scripts/ask_question.py --question "..." --show-browser
 ```
 
 **Parameters:**
@@ -46,35 +56,35 @@ Manage notebook library with CRUD operations.
 
 ```bash
 # Smart Add (discover content first)
-python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
+./scripts/ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
 # Then add with discovered info
-python scripts/run.py notebook_manager.py add \
+./scripts/notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Name" \
   --description "Description" \
   --topics "topic1,topic2"
 
 # Direct add (when you know the content)
-python scripts/run.py notebook_manager.py add \
+./scripts/notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Name" \
   --description "What it contains" \
   --topics "topic1,topic2"
 
 # List notebooks
-python scripts/run.py notebook_manager.py list
+./scripts/notebook_manager.py list
 
 # Search notebooks
-python scripts/run.py notebook_manager.py search --query "keyword"
+./scripts/notebook_manager.py search --query "keyword"
 
 # Activate notebook
-python scripts/run.py notebook_manager.py activate --id notebook-id
+./scripts/notebook_manager.py activate --id notebook-id
 
 # Remove notebook
-python scripts/run.py notebook_manager.py remove --id notebook-id
+./scripts/notebook_manager.py remove --id notebook-id
 
 # Show statistics
-python scripts/run.py notebook_manager.py stats
+./scripts/notebook_manager.py stats
 ```
 
 **Commands:**
@@ -90,16 +100,16 @@ Handle Google authentication and browser state.
 
 ```bash
 # Setup (browser visible for login)
-python scripts/run.py auth_manager.py setup
+./scripts/auth_manager.py setup
 
 # Check status
-python scripts/run.py auth_manager.py status
+./scripts/auth_manager.py status
 
 # Re-authenticate
-python scripts/run.py auth_manager.py reauth
+./scripts/auth_manager.py reauth
 
 # Clear authentication
-python scripts/run.py auth_manager.py clear
+./scripts/auth_manager.py clear
 ```
 
 **Commands:**
@@ -113,16 +123,16 @@ Clean skill data with preservation options.
 
 ```bash
 # Preview cleanup
-python scripts/run.py cleanup_manager.py
+./scripts/cleanup_manager.py
 
 # Execute cleanup
-python scripts/run.py cleanup_manager.py --confirm
+./scripts/cleanup_manager.py --confirm
 
 # Keep library
-python scripts/run.py cleanup_manager.py --confirm --preserve-library
+./scripts/cleanup_manager.py --confirm --preserve-library
 
 # Force without prompt
-python scripts/run.py cleanup_manager.py --confirm --force
+./scripts/cleanup_manager.py --confirm --force
 ```
 
 **Options:**
@@ -130,35 +140,39 @@ python scripts/run.py cleanup_manager.py --confirm --force
 - `--preserve-library`: Keep notebook library
 - `--force`: Skip confirmation prompt
 
-### run.py
-Script wrapper that handles environment setup.
+### UV Automatic Dependency Management
 
+All scripts use UV shebang with PEP 723 inline metadata for automatic dependency management.
+
+**How it works:**
+1. First run: UV installs dependencies (~30 seconds)
+2. Subsequent runs: Instant execution (cached)
+3. No manual venv setup needed
+4. Dependencies declared inline in each script
+
+**Making scripts executable (Unix/Mac only):**
 ```bash
-# Usage
-python scripts/run.py [script_name].py [arguments]
-
-# Examples
-python scripts/run.py auth_manager.py status
-python scripts/run.py ask_question.py --question "..."
+chmod +x scripts/*.py
 ```
-
-**Automatic actions:**
-1. Creates `.venv` if missing
-2. Installs dependencies
-3. Activates environment
-4. Executes target script
 
 ## Python API Usage
 
-### Using subprocess with run.py
+### Using subprocess with UV
 
 ```python
 import subprocess
 import json
 
-# Always use run.py wrapper
+# Direct execution (Unix/Mac)
 result = subprocess.run([
-    "python", "scripts/run.py", "ask_question.py",
+    "./scripts/ask_question.py",
+    "--question", "Your question",
+    "--notebook-id", "notebook-id"
+], capture_output=True, text=True)
+
+# Or explicit uv (all platforms)
+result = subprocess.run([
+    "uv", "run", "scripts/ask_question.py",
     "--question", "Your question",
     "--notebook-id", "notebook-id"
 ], capture_output=True, text=True)
@@ -166,18 +180,23 @@ result = subprocess.run([
 answer = result.stdout
 ```
 
-### Direct imports (after venv exists)
+### Direct imports with uv run
 
 ```python
-# Only works if venv is already created and activated
-from notebook_manager import NotebookLibrary
-from auth_manager import AuthManager
+# Using uv run for module imports
+import subprocess
 
+# Execute in UV environment
+result = subprocess.run([
+    "uv", "run", "python", "-c",
+    """
+from scripts.notebook_manager import NotebookLibrary
 library = NotebookLibrary()
-notebooks = library.list_notebooks()
+print(len(library.list_notebooks()))
+"""
+], capture_output=True, text=True, cwd="~/.claude/skills/notebooklm")
 
-auth = AuthManager()
-is_auth = auth.is_authenticated()
+print(result.stdout)
 ```
 
 ## Data Storage
@@ -212,9 +231,9 @@ DEFAULT_NOTEBOOK_ID=     # Default notebook
 Common patterns:
 
 ```python
-# Using run.py prevents most errors
+# UV handles dependencies automatically
 result = subprocess.run([
-    "python", "scripts/run.py", "ask_question.py",
+    "./scripts/ask_question.py",
     "--question", "Question"
 ], capture_output=True, text=True)
 
@@ -225,7 +244,7 @@ if result.returncode != 0:
         pass
     elif "not authenticated" in error.lower():
         # Run auth setup
-        subprocess.run(["python", "scripts/run.py", "auth_manager.py", "setup"])
+        subprocess.run(["./scripts/auth_manager.py", "setup"])
 ```
 
 ## Rate Limits
@@ -247,7 +266,7 @@ import subprocess
 
 def query(question, notebook_id):
     result = subprocess.run([
-        "python", "scripts/run.py", "ask_question.py",
+        "./scripts/ask_question.py",
         "--question", question,
         "--notebook-id", notebook_id
     ], capture_output=True, text=True)
@@ -269,7 +288,7 @@ def batch_research(questions, notebook_id):
     results = []
     for question in questions:
         result = subprocess.run([
-            "python", "scripts/run.py", "ask_question.py",
+            "./scripts/ask_question.py",
             "--question", question,
             "--notebook-id", notebook_id
         ], capture_output=True, text=True)
@@ -302,8 +321,10 @@ def batch_research(questions, notebook_id):
 
 ## Best Practices
 
-1. **Always use run.py** - Ensures environment
-2. **Check auth first** - Before operations
-3. **Handle rate limits** - Implement retries
-4. **Include context** - Questions are independent
-5. **Clean sessions** - Use cleanup_manager
+1. **Install UV first** - Required for all operations
+2. **Make scripts executable** - `chmod +x scripts/*.py` (Unix/Mac)
+3. **Check auth first** - Before operations
+4. **Handle rate limits** - Implement retries
+5. **Include context** - Questions are independent
+6. **Clean sessions** - Use cleanup_manager
+7. **First run delay** - Dependencies install automatically (~30s)
