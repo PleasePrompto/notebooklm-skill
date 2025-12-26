@@ -72,3 +72,9 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Node.js
+scripts/node_modules/
+
+# Local config (contains personal paths/URLs)
+sync-config.json

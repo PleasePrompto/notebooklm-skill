@@ -248,12 +248,56 @@ Synthesize and respond to user
 5. **Include context** - Each question is independent
 6. **Synthesize answers** - Combine multiple responses
 
+## Auto-Sync Feature (NEW)
+
+Automatically sync local files to Google Drive and add them to NotebookLM notebooks.
+
+### Quick Commands
+
+```bash
+# Full sync (Drive + NotebookLM)
+notebooklm-sync
+
+# Drive sync only (faster, hourly via LaunchAgent)
+notebooklm-sync --drive-only
+
+# Check sync status
+notebooklm-sync --status
+```
+
+### Configuration
+
+Edit `~/.claude/skills/notebooklm/sync-config.json`:
+
+```json
+{
+  "sync_mappings": [
+    {
+      "name": "Argus Investment Analysis",
+      "local_path": "~/Dropbox/PKM-Vault/1-Projects/Argus/Shared report",
+      "drive_folder": "NotebookLM-Sources/Argus-Investment-Analysis",
+      "notebook_url": "https://notebooklm.google.com/notebook/xxx",
+      "enabled": true
+    }
+  ]
+}
+```
+
+### Manual Add Sources
+
+```bash
+cd ~/.claude/skills/notebooklm && source venv/bin/activate
+python scripts/add_sources.py \
+  --notebook-url "https://notebooklm.google.com/notebook/xxx" \
+  --drive-folder "NotebookLM-Sources/MyFolder"
+```
+
 ## Limitations
 
 - No session persistence (each question = new browser)
 - Rate limits on free Google accounts (50 queries/day)
-- Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
+- Auto-sync requires Google OAuth credentials setup
 
 ## Resources (Skill Structure)
 

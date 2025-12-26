@@ -1,0 +1,29 @@
+{
+  "description": "NotebookLM Google Drive Sync Configuration",
+  "version": "2.0.0",
+  "sync_mappings": [
+    {
+      "name": "Example Notebook",
+      "local_path": "~/Documents/my-reports",
+      "drive_folder": "NotebookLM-Sources/My-Reports",
+      "notebook_url": "https://notebooklm.google.com/notebook/YOUR-NOTEBOOK-ID",
+      "enabled": true,
+      "description": "My research reports and documents"
+    },
+    {
+      "name": "Another Notebook",
+      "local_path": "~/Documents/other-docs",
+      "drive_folder": "NotebookLM-Sources/Other-Docs",
+      "notebook_url": "",
+      "enabled": false,
+      "description": "Other documents (disabled)"
+    }
+  ],
+  "settings": {
+    "convert_md_to_gdoc": true,
+    "supported_extensions": [".md", ".pdf", ".txt", ".docx"],
+    "exclude_patterns": ["node_modules", ".git", ".obsidian", ".DS_Store"],
+    "sync_interval_hours": 1
+  },
+  "synced_files": {}
+}
