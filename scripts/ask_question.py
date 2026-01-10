@@ -52,11 +52,11 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
     auth = AuthManager()
 
     if not auth.is_authenticated():
-        print("⚠️ Not authenticated. Run: python auth_manager.py setup")
+        print("[WARN] Not authenticated. Run: python auth_manager.py setup")
         return None
 
-    print(f"💬 Asking: {question}")
-    print(f"📚 Notebook: {notebook_url}")
+    print(f"[ASK] Asking: {question}")
+    print(f"[NOTEBOOK] Notebook: {notebook_url}")
 
     playwright = None
     context = None
@@ -73,14 +73,14 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
         # Navigate to notebook
         page = context.new_page()
-        print("  🌐 Opening notebook...")
+        print("      [OPEN] Opening notebook...")
         page.goto(notebook_url, wait_until="domcontentloaded")
 
         # Wait for NotebookLM
         page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
 
         # Wait for query input (MCP approach)
-        print("  ⏳ Waiting for query input...")
+        print("      [WAIT] Waiting for query input...")
         query_element = None
 
         for selector in QUERY_INPUT_SELECTORS:
@@ -91,31 +91,31 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                     state="visible"  # Only check visibility, not disabled!
                 )
                 if query_element:
-                    print(f"  ✓ Found input: {selector}")
+                    print(f"      [OK] Found input: {selector}")
                     break
             except:
                 continue
 
         if not query_element:
-            print("  ❌ Could not find query input")
+            print("      [ERROR] Could not find query input")
             return None
 
         # Type question (human-like, fast)
-        print("  ⏳ Typing question...")
+        print("      [WAIT] Typing question...")
         
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
 
         # Submit
-        print("  📤 Submitting...")
+        print("      [SUBMIT] Submitting...")
         page.keyboard.press("Enter")
 
         # Small pause
         StealthUtils.random_delay(500, 1500)
 
         # Wait for response (MCP approach: poll for stable text)
-        print("  ⏳ Waiting for answer...")
+        print("      [WAIT] Waiting for answer...")
 
         answer = None
         stable_count = 0
@@ -159,15 +159,15 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             time.sleep(1)
 
         if not answer:
-            print("  ❌ Timeout waiting for answer")
+            print("      [ERROR] Timeout waiting for answer")
             return None
 
-        print("  ✅ Got answer!")
+        print("      [OK] Got answer!")
         # Add follow-up reminder to encourage Claude to ask more questions
         return answer + FOLLOW_UP_REMINDER
 
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"      [ERROR] {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -206,7 +206,7 @@ def main():
         if notebook:
             notebook_url = notebook['url']
         else:
-            print(f"❌ Notebook '{args.notebook_id}' not found")
+            print(f"[ERROR] Notebook '{args.notebook_id}' not found")
             return 1
 
     if not notebook_url:
@@ -215,19 +215,19 @@ def main():
         active = library.get_active_notebook()
         if active:
             notebook_url = active['url']
-            print(f"📚 Using active notebook: {active['name']}")
+            print(f"[NOTEBOOK] Using active notebook: {active['name']}")
         else:
             # Show available notebooks
             notebooks = library.list_notebooks()
             if notebooks:
-                print("\n📚 Available notebooks:")
+                print("\n[NOTEBOOKS] Available notebooks:")
                 for nb in notebooks:
                     mark = " [ACTIVE]" if nb.get('id') == library.active_notebook_id else ""
-                    print(f"  {nb['id']}: {nb['name']}{mark}")
+                    print(f"            {nb['id']}: {nb['name']}{mark}")
                 print("\nSpecify with --notebook-id or set active:")
                 print("python scripts/run.py notebook_manager.py activate --id ID")
             else:
-                print("❌ No notebooks in library. Add one first:")
+                print("[ERROR] No notebooks in library. Add one first:")
                 print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
             return 1
 
@@ -248,7 +248,7 @@ def main():
         print("=" * 60)
         return 0
     else:
-        print("\n❌ Failed to get answer")
+        print("\n[ERROR] Failed to get answer")
         return 1
 
 

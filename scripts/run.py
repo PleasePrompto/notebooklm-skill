@@ -31,16 +31,16 @@ def ensure_venv():
 
     # Check if venv exists
     if not venv_dir.exists():
-        print("🔧 First-time setup: Creating virtual environment...")
-        print("   This may take a minute...")
+        print("[SETUP] First-time setup: Creating virtual environment...")
+        print("        This may take a minute...")
 
         # Run setup with system Python
         result = subprocess.run([sys.executable, str(setup_script)])
         if result.returncode != 0:
-            print("❌ Failed to set up environment")
+            print("[ERROR] Failed to set up environment")
             sys.exit(1)
 
-        print("✅ Environment ready!")
+        print("[OK] Environment ready!")
 
     return get_venv_python()
 
@@ -74,10 +74,10 @@ def main():
     script_path = skill_dir / "scripts" / script_name
 
     if not script_path.exists():
-        print(f"❌ Script not found: {script_name}")
-        print(f"   Working directory: {Path.cwd()}")
-        print(f"   Skill directory: {skill_dir}")
-        print(f"   Looked for: {script_path}")
+        print(f"[ERROR] Script not found: {script_name}")
+        print(f"        Working directory: {Path.cwd()}")
+        print(f"        Skill directory: {skill_dir}")
+        print(f"        Looked for: {script_path}")
         sys.exit(1)
 
     # Ensure venv exists and get Python executable
@@ -91,10 +91,10 @@ def main():
         result = subprocess.run(cmd)
         sys.exit(result.returncode)
     except KeyboardInterrupt:
-        print("\n⚠️ Interrupted by user")
+        print("\n[WARN] Interrupted by user")
         sys.exit(130)
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"[ERROR] {e}")
         sys.exit(1)
 
 

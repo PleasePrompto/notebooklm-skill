@@ -33,22 +33,22 @@ class SkillEnvironment:
 
         # Check if we're already in the correct venv
         if self.is_in_skill_venv():
-            print("✅ Already running in skill virtual environment")
+            print("[OK] Already running in skill virtual environment")
             return True
 
         # Create venv if it doesn't exist
         if not self.venv_dir.exists():
-            print(f"🔧 Creating virtual environment in {self.venv_dir.name}/")
+            print(f"[SETUP] Creating virtual environment in {self.venv_dir.name}/")
             try:
                 venv.create(self.venv_dir, with_pip=True)
-                print("✅ Virtual environment created")
+                print("[OK] Virtual environment created")
             except Exception as e:
-                print(f"❌ Failed to create venv: {e}")
+                print(f"[ERROR] Failed to create venv: {e}")
                 return False
 
         # Install/update dependencies
         if self.requirements_file.exists():
-            print("📦 Installing dependencies...")
+            print("[INFO] Installing dependencies...")
             try:
                 # Upgrade pip first
                 subprocess.run(
@@ -65,12 +65,12 @@ class SkillEnvironment:
                     capture_output=True,
                     text=True
                 )
-                print("✅ Dependencies installed")
+                print("[OK] Dependencies installed")
 
                 # Install Chrome for Patchright (not Chromium!)
                 # Using real Chrome ensures cross-platform reliability and consistent browser fingerprinting
                 # See: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python#anti-detection
-                print("🌐 Installing Google Chrome for Patchright...")
+                print("[INFO] Installing Google Chrome for Patchright...")
                 try:
                     subprocess.run(
                         [str(self.venv_python), "-m", "patchright", "install", "chrome"],
@@ -78,19 +78,19 @@ class SkillEnvironment:
                         capture_output=True,
                         text=True
                     )
-                    print("✅ Chrome installed")
+                    print("[OK] Chrome installed")
                 except subprocess.CalledProcessError as e:
-                    print(f"⚠️ Warning: Failed to install Chrome: {e}")
-                    print("   You may need to run manually: python -m patchright install chrome")
-                    print("   Chrome is required (not Chromium) for reliability!")
+                    print(f"[WARN] Warning: Failed to install Chrome: {e}")
+                    print("       You may need to run manually: python -m patchright install chrome")
+                    print("       Chrome is required (not Chromium) for reliability!")
 
                 return True
             except subprocess.CalledProcessError as e:
-                print(f"❌ Failed to install dependencies: {e}")
-                print(f"   Output: {e.output if hasattr(e, 'output') else 'No output'}")
+                print(f"[ERROR] Failed to install dependencies: {e}")
+                print(f"        Output: {e.output if hasattr(e, 'output') else 'No output'}")
                 return False
         else:
-            print("⚠️ No requirements.txt found, skipping dependency installation")
+            print("[WARN] No requirements.txt found, skipping dependency installation")
             return True
 
     def is_in_skill_venv(self) -> bool:
@@ -112,12 +112,12 @@ class SkillEnvironment:
         script_path = self.skill_dir / "scripts" / script_name
 
         if not script_path.exists():
-            print(f"❌ Script not found: {script_path}")
+            print(f"[ERROR] Script not found: {script_path}")
             return 1
 
         # Ensure venv is set up
         if not self.ensure_venv():
-            print("❌ Failed to set up environment")
+            print("[ERROR] Failed to set up environment")
             return 1
 
         # Build command
@@ -125,14 +125,14 @@ class SkillEnvironment:
         if args:
             cmd.extend(args)
 
-        print(f"🚀 Running: {script_name} with venv Python")
+        print(f"[RUN] Running: {script_name} with venv Python")
 
         try:
             # Run the script with venv Python
             result = subprocess.run(cmd)
             return result.returncode
         except Exception as e:
-            print(f"❌ Failed to run script: {e}")
+            print(f"[ERROR] Failed to run script: {e}")
             return 1
 
     def activate_instructions(self) -> str:
@@ -176,12 +176,12 @@ def main():
 
     if args.check:
         if env.venv_dir.exists():
-            print(f"✅ Virtual environment exists: {env.venv_dir}")
-            print(f"   Python: {env.get_python_executable()}")
-            print(f"   To activate manually: {env.activate_instructions()}")
+            print(f"[OK] Virtual environment exists: {env.venv_dir}")
+            print(f"     Python: {env.get_python_executable()}")
+            print(f"     To activate manually: {env.activate_instructions()}")
         else:
-            print(f"❌ No virtual environment found")
-            print(f"   Run setup_environment.py to create it")
+            print(f"[ERROR] No virtual environment found")
+            print(f"        Run setup_environment.py to create it")
         return
 
     if args.run:
@@ -190,13 +190,13 @@ def main():
 
     # Default: ensure environment is set up
     if env.ensure_venv():
-        print("\n✅ Environment ready!")
-        print(f"   Virtual env: {env.venv_dir}")
-        print(f"   Python: {env.get_python_executable()}")
+        print("\n[OK] Environment ready!")
+        print(f"     Virtual env: {env.venv_dir}")
+        print(f"     Python: {env.get_python_executable()}")
         print(f"\nTo activate manually: {env.activate_instructions()}")
         print(f"Or run scripts directly: python setup_environment.py --run script_name.py")
     else:
-        print("\n❌ Environment setup failed")
+        print("\n[ERROR] Environment setup failed")
         return 1
 
 
