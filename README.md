@@ -88,6 +88,15 @@ When you first use the skill, it automatically:
 
 **Note:** The setup uses real Chrome instead of Chromium for cross-platform reliability, consistent browser fingerprinting, and better anti-detection with Google services
 
+### Install with `sk`
+
+Install via [sk](https://github.com/803/skills-supply), the universal skills package manager for coding agents (supports Claude Code, Amp, Codex, OpenCode, etc...).
+
+```bash
+sk pkg add github PleasePrompto/notebooklm-skill
+sk sync
+```
+
 ---
 
 ## Quick Start
