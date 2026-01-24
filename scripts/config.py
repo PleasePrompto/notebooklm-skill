@@ -13,6 +13,18 @@ BROWSER_PROFILE_DIR = BROWSER_STATE_DIR / "browser_profile"
 STATE_FILE = BROWSER_STATE_DIR / "state.json"
 AUTH_INFO_FILE = DATA_DIR / "auth_info.json"
 LIBRARY_FILE = DATA_DIR / "library.json"
+SOURCE_SUMMARY_DIR = DATA_DIR / "library-source-summary"
+
+# Source Summary Query
+SOURCE_SUMMARY_QUERY = """List ALL the sources/documents in this notebook. For each source, provide:
+1. The exact source name/title as shown in NotebookLM
+2. A brief 1-2 sentence summary of what that source contains
+
+Format your response as a markdown table with these columns:
+| Source Name | Summary |
+|-------------|---------|
+
+Include EVERY source in this notebook, even if there are many."""
 
 # NotebookLM Selectors
 QUERY_INPUT_SELECTORS = [

@@ -161,21 +161,25 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 
 ```
 ~/.claude/skills/notebooklm/
-├── SKILL.md              # Instructions for Claude
-├── scripts/              # Python automation scripts
-│   ├── ask_question.py   # Query NotebookLM
-│   ├── notebook_manager.py # Library management
-│   └── auth_manager.py   # Google authentication
-├── .venv/                # Isolated Python environment (auto-created)
-└── data/                 # Local notebook library
+├── SKILL.md                # Instructions for Claude
+├── scripts/                # Python automation scripts
+│   ├── ask_question.py     # Query NotebookLM with source filtering
+│   ├── notebook_manager.py # Library + source summary management
+│   ├── auth_manager.py     # Google authentication
+│   ├── source_filter.py    # LLM-based relevance scoring
+│   └── source_extractor.py # Extract source summaries from notebooks
+├── .venv/                  # Isolated Python environment (auto-created)
+└── data/                   # Local notebook library + source summaries
 ```
 
 When you mention NotebookLM or send a notebook URL, Claude:
 1. Loads the skill instructions
 2. Runs the appropriate Python script
-3. Opens a browser, asks your question
-4. Returns the answer directly to you
-5. Uses that knowledge to help with your task
+3. **Scores source relevance** using Gemini/Claude LLM
+4. **Deselects irrelevant sources** in the browser
+5. Opens a browser, asks your question
+6. Returns the answer directly to you
+7. Uses that knowledge to help with your task
 
 ---
 
@@ -189,6 +193,19 @@ No copy-paste between browser and editor. Claude asks and receives answers progr
 
 ### **Smart Library Management**
 Save NotebookLM links with tags and descriptions. Claude auto-selects the right notebook for your task.
+
+### **Intelligent Source Filtering**
+Before each query, the skill analyzes which sources are relevant:
+- **LLM-based scoring**: Uses Gemini or Claude to semantically score each source (1-10)
+- **Automatic deselection**: Unchecks irrelevant sources in the browser
+- **Faster responses**: NotebookLM only searches relevant documents
+- **Fallback support**: Gemini → Claude → keyword matching
+
+### **Source Summary Caching**
+When you add a notebook, the skill automatically:
+- Extracts summaries for each source document
+- Caches them locally for instant relevance scoring
+- Updates incrementally (only fetches new sources)
 
 ### **Automatic Authentication**
 One-time Google login, then authentication persists across sessions.
@@ -206,10 +223,12 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 | What you say | What happens |
 |--------------|--------------|
 | *"Set up NotebookLM authentication"* | Opens Chrome for Google login |
-| *"Add [link] to my NotebookLM library"* | Saves notebook with metadata |
+| *"Add [link] to my NotebookLM library"* | Saves notebook with metadata + extracts source summaries |
 | *"Show my NotebookLM notebooks"* | Lists all saved notebooks |
-| *"Ask my API docs about [topic]"* | Queries the relevant notebook |
+| *"Ask my API docs about [topic]"* | Queries with intelligent source filtering |
 | *"Use the React notebook"* | Sets active notebook |
+| *"Update sources for my notebook"* | Re-fetches source summaries |
+| *"Show sources in my notebook"* | Displays cached source summaries |
 | *"Clear NotebookLM data"* | Fresh start (keeps library) |
 
 ---
@@ -264,10 +283,15 @@ All data is stored locally within the skill directory:
 
 ```
 ~/.claude/skills/notebooklm/data/
-├── library.json       - Your notebook library with metadata
-├── auth_info.json     - Authentication status info
-└── browser_state/     - Browser cookies and session data
+├── library.json              - Your notebook library with metadata
+├── auth_info.json            - Authentication status info
+├── browser_state/            - Browser cookies and session data
+└── library-source-summary/   - Cached source summaries
+    └── {notebook-id}.md      - Source titles and summaries for each notebook
 ```
+
+**Source Summary Files:**
+Each notebook gets a markdown file with summaries of all sources. These are used for intelligent source filtering - the LLM scores each source's relevance to your question before querying.
 
 **Important Security Note:**
 - The `data/` directory contains sensitive authentication data and personal notebooks

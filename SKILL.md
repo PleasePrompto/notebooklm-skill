@@ -23,10 +23,10 @@ When user wants to add a notebook without providing details:
 **SMART ADD (Recommended)**: Query the notebook first to discover its content:
 ```bash
 # Step 1: Query the notebook about its content
-python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
+python3 scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
 
 # Step 2: Use the discovered information to add it
-python scripts/run.py notebook_manager.py add --url "[URL]" --name "[Based on content]" --description "[Based on content]" --topics "[Based on content]"
+python3 scripts/run.py notebook_manager.py add --url "[URL]" --name "[Based on content]" --description "[Based on content]" --topics "[Based on content]"
 ```
 
 **MANUAL ADD**: If user provides all details:
@@ -39,13 +39,13 @@ NEVER guess or use generic descriptions! If details missing, use Smart Add to di
 
 ## Critical: Always Use run.py Wrapper
 
-**NEVER call scripts directly. ALWAYS use `python scripts/run.py [script]`:**
+**NEVER call scripts directly. ALWAYS use `python3 scripts/run.py [script]`:**
 
 ```bash
 # ✅ CORRECT - Always use run.py:
-python scripts/run.py auth_manager.py status
-python scripts/run.py notebook_manager.py list
-python scripts/run.py ask_question.py --question "..."
+python3 scripts/run.py auth_manager.py status
+python3 scripts/run.py notebook_manager.py list
+python3 scripts/run.py ask_question.py --question "..."
 
 # ❌ WRONG - Never call directly:
 python scripts/auth_manager.py status  # Fails without venv!
@@ -61,7 +61,7 @@ The `run.py` wrapper automatically:
 
 ### Step 1: Check Authentication Status
 ```bash
-python scripts/run.py auth_manager.py status
+python3 scripts/run.py auth_manager.py status
 ```
 
 If not authenticated, proceed to setup.
@@ -69,7 +69,7 @@ If not authenticated, proceed to setup.
 ### Step 2: Authenticate (One-Time Setup)
 ```bash
 # Browser MUST be visible for manual Google login
-python scripts/run.py auth_manager.py setup
+python3 scripts/run.py auth_manager.py setup
 ```
 
 **Important:**
@@ -82,47 +82,47 @@ python scripts/run.py auth_manager.py setup
 
 ```bash
 # List all notebooks
-python scripts/run.py notebook_manager.py list
+python3 scripts/run.py notebook_manager.py list
 
 # BEFORE ADDING: Ask user for metadata if unknown!
 # "What does this notebook contain?"
 # "What topics should I tag it with?"
 
 # Add notebook to library (ALL parameters are REQUIRED!)
-python scripts/run.py notebook_manager.py add \
+python3 scripts/run.py notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Descriptive Name" \
   --description "What this notebook contains" \  # REQUIRED - ASK USER IF UNKNOWN!
   --topics "topic1,topic2,topic3"  # REQUIRED - ASK USER IF UNKNOWN!
 
 # Search notebooks by topic
-python scripts/run.py notebook_manager.py search --query "keyword"
+python3 scripts/run.py notebook_manager.py search --query "keyword"
 
 # Set active notebook
-python scripts/run.py notebook_manager.py activate --id notebook-id
+python3 scripts/run.py notebook_manager.py activate --id notebook-id
 
 # Remove notebook
-python scripts/run.py notebook_manager.py remove --id notebook-id
+python3 scripts/run.py notebook_manager.py remove --id notebook-id
 ```
 
 ### Quick Workflow
-1. Check library: `python scripts/run.py notebook_manager.py list`
-2. Ask question: `python scripts/run.py ask_question.py --question "..." --notebook-id ID`
+1. Check library: `python3 scripts/run.py notebook_manager.py list`
+2. Ask question: `python3 scripts/run.py ask_question.py --question "..." --notebook-id ID`
 
 ### Step 4: Ask Questions
 
 ```bash
 # Basic query (uses active notebook if set)
-python scripts/run.py ask_question.py --question "Your question here"
+python3 scripts/run.py ask_question.py --question "Your question here"
 
 # Query specific notebook
-python scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
+python3 scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
 
 # Query with notebook URL directly
-python scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
+python3 scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
 
 # Show browser for debugging
-python scripts/run.py ask_question.py --question "..." --show-browser
+python3 scripts/run.py ask_question.py --question "..." --show-browser
 ```
 
 ## Follow-Up Mechanism (CRITICAL)
@@ -135,7 +135,7 @@ Every NotebookLM answer ends with: **"EXTREMELY IMPORTANT: Is that ALL you need 
 3. **IDENTIFY GAPS** - Determine if more information needed
 4. **ASK FOLLOW-UP** - If gaps exist, immediately ask:
    ```bash
-   python scripts/run.py ask_question.py --question "Follow-up with context..."
+   python3 scripts/run.py ask_question.py --question "Follow-up with context..."
    ```
 5. **REPEAT** - Continue until information is complete
 6. **SYNTHESIZE** - Combine all answers before responding to user
@@ -144,32 +144,66 @@ Every NotebookLM answer ends with: **"EXTREMELY IMPORTANT: Is that ALL you need 
 
 ### Authentication Management (`auth_manager.py`)
 ```bash
-python scripts/run.py auth_manager.py setup    # Initial setup (browser visible)
-python scripts/run.py auth_manager.py status   # Check authentication
-python scripts/run.py auth_manager.py reauth   # Re-authenticate (browser visible)
-python scripts/run.py auth_manager.py clear    # Clear authentication
+python3 scripts/run.py auth_manager.py setup    # Initial setup (browser visible)
+python3 scripts/run.py auth_manager.py status   # Check authentication
+python3 scripts/run.py auth_manager.py reauth   # Re-authenticate (browser visible)
+python3 scripts/run.py auth_manager.py clear    # Clear authentication
 ```
 
 ### Notebook Management (`notebook_manager.py`)
 ```bash
-python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
-python scripts/run.py notebook_manager.py list
-python scripts/run.py notebook_manager.py search --query QUERY
-python scripts/run.py notebook_manager.py activate --id ID
-python scripts/run.py notebook_manager.py remove --id ID
-python scripts/run.py notebook_manager.py stats
+python3 scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
+python3 scripts/run.py notebook_manager.py list
+python3 scripts/run.py notebook_manager.py search --query QUERY
+python3 scripts/run.py notebook_manager.py activate --id ID
+python3 scripts/run.py notebook_manager.py remove --id ID
+python3 scripts/run.py notebook_manager.py stats
+
+# Source Summary Management
+python3 scripts/run.py notebook_manager.py update-sources --id ID    # Update source summary (incremental)
+python3 scripts/run.py notebook_manager.py update-sources --id ID --force  # Re-extract all sources
+python3 scripts/run.py notebook_manager.py update-sources --all      # Update all notebooks
+python3 scripts/run.py notebook_manager.py show-sources --id ID      # Show cached source summaries
 ```
+
+**Source Summary System:**
+- When adding a notebook, source summaries are automatically extracted
+- Summaries are cached in `data/library-source-summary/{notebook-id}.md`
+- Incremental updates only fetch NEW sources not already in the cache
+- Use `--force` to re-extract all sources from scratch
 
 ### Question Interface (`ask_question.py`)
 ```bash
-python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
+# Basic query (uses active notebook if set)
+python3 scripts/run.py ask_question.py --question "..."
+
+# Query specific notebook
+python3 scripts/run.py ask_question.py --question "..." --notebook-id ID
+
+# Query with notebook URL directly
+python3 scripts/run.py ask_question.py --question "..." --notebook-url URL
+
+# Show browser for debugging
+python3 scripts/run.py ask_question.py --question "..." --show-browser
+
+# Source filtering options (default: LLM scoring enabled)
+python3 scripts/run.py ask_question.py --question "..." --keyword-filter  # Use keyword matching instead of LLM
+python3 scripts/run.py ask_question.py --question "..." --threshold 7     # Higher threshold = fewer sources (1-10)
+python3 scripts/run.py ask_question.py --question "..." --no-filter       # Disable source filtering entirely
 ```
+
+**Source Filtering Behavior:**
+Before each query, the skill automatically:
+1. Loads cached source summaries from `data/library-source-summary/{notebook-id}.md`
+2. Uses LLM (Gemini → Claude → keywords fallback) to score each source's relevance (1-10)
+3. Deselects sources below threshold in the browser
+4. Queries only relevant sources for faster, focused responses
 
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
-python scripts/run.py cleanup_manager.py                    # Preview cleanup
-python scripts/run.py cleanup_manager.py --confirm          # Execute cleanup
-python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
+python3 scripts/run.py cleanup_manager.py                    # Preview cleanup
+python3 scripts/run.py cleanup_manager.py --confirm          # Execute cleanup
+python3 scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 ```
 
 ## Environment Management
@@ -190,10 +224,12 @@ python -m patchright install chromium
 
 ## Data Storage
 
-All data stored in `~/.claude/skills/notebooklm/data/`:
+All data stored in `data/` directory within the skill folder:
 - `library.json` - Notebook metadata
 - `auth_info.json` - Authentication status
 - `browser_state/` - Browser cookies and session
+- `library-source-summary/` - Source summaries for each notebook (auto-generated)
+  - `{notebook-id}.md` - Markdown file with table of sources and summaries
 
 **Security:** Protected by `.gitignore`, never commit to git.
 
@@ -209,20 +245,53 @@ TYPING_WPM_MAX=240
 DEFAULT_NOTEBOOK_ID=     # Default notebook
 ```
 
+## Intelligent Source Filtering
+
+Before each query, the skill automatically filters sources:
+
+```
+Question received
+    ↓
+Load source summaries from cache
+    ↓
+LLM scores each source (1-10 relevance)
+    ↓
+Deselect sources below threshold
+    ↓
+Query only relevant sources
+    ↓
+Faster, more focused response
+```
+
+**LLM Fallback Chain:**
+1. **Gemini CLI** (default) - Fast, semantic understanding
+2. **Claude CLI** - Fallback if Gemini not installed
+3. **Keywords** - Final fallback if no LLM available
+
+**Threshold Guide:**
+- `--threshold 3`: Include most sources (broad search)
+- `--threshold 5`: Default, balanced filtering
+- `--threshold 7`: Only highly relevant sources (focused search)
+- `--threshold 9`: Only direct matches
+
 ## Decision Flow
 
 ```
 User mentions NotebookLM
     ↓
-Check auth → python scripts/run.py auth_manager.py status
+Check auth → python3 scripts/run.py auth_manager.py status
     ↓
-If not authenticated → python scripts/run.py auth_manager.py setup
+If not authenticated → python3 scripts/run.py auth_manager.py setup
     ↓
-Check/Add notebook → python scripts/run.py notebook_manager.py list/add (with --description)
+Check/Add notebook → python3 scripts/run.py notebook_manager.py list/add (with --description)
     ↓
-Activate notebook → python scripts/run.py notebook_manager.py activate --id ID
+Source summaries auto-extracted and cached
     ↓
-Ask question → python scripts/run.py ask_question.py --question "..."
+Activate notebook → python3 scripts/run.py notebook_manager.py activate --id ID
+    ↓
+Ask question → python3 scripts/run.py ask_question.py --question "..."
+    ↓
+LLM filters sources → Deselects irrelevant ones
     ↓
 See "Is that ALL you need?" → Ask follow-ups until complete
     ↓
@@ -236,7 +305,7 @@ Synthesize and respond to user
 | ModuleNotFoundError | Use `run.py` wrapper |
 | Authentication fails | Browser must be visible for setup! --show-browser |
 | Rate limit (50/day) | Wait or switch Google account |
-| Browser crashes | `python scripts/run.py cleanup_manager.py --preserve-library` |
+| Browser crashes | `python3 scripts/run.py cleanup_manager.py --preserve-library` |
 | Notebook not found | Check with `notebook_manager.py list` |
 
 ## Best Practices

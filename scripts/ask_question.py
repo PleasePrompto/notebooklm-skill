@@ -24,6 +24,7 @@ from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
 from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
 from browser_utils import BrowserFactory, StealthUtils
+from source_filter import SourceFilter, select_sources_in_browser
 
 
 # Follow-up reminder (adapted from MCP server for stateless operation)
@@ -37,14 +38,20 @@ FOLLOW_UP_REMINDER = (
 )
 
 
-def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
+def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
+                   headless: bool = True, filter_sources: bool = True,
+                   use_llm_filter: bool = True, relevance_threshold: int = 5) -> str:
     """
     Ask a question to NotebookLM
 
     Args:
         question: Question to ask
         notebook_url: NotebookLM notebook URL
+        notebook_id: Notebook ID (for source filtering)
         headless: Run browser in headless mode
+        filter_sources: Whether to filter sources based on question relevance
+        use_llm_filter: Use Gemini for semantic relevance scoring (default True)
+        relevance_threshold: Minimum score (1-10) for LLM filter (default 5)
 
     Returns:
         Answer text from NotebookLM
@@ -54,6 +61,21 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
     if not auth.is_authenticated():
         print("⚠️ Not authenticated. Run: python auth_manager.py setup")
         return None
+
+    # Load source filter if enabled and notebook_id provided
+    source_filter = None
+    relevant_sources = None
+    all_sources = None
+
+    if filter_sources and notebook_id:
+        source_filter = SourceFilter(notebook_id)
+        if source_filter.sources:
+            relevant_sources = source_filter.get_relevant_sources(
+                question,
+                use_llm=use_llm_filter,
+                threshold=relevance_threshold
+            )
+            all_sources = source_filter.get_all_source_titles()
 
     print(f"💬 Asking: {question}")
     print(f"📚 Notebook: {notebook_url}")
@@ -99,6 +121,20 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         if not query_element:
             print("  ❌ Could not find query input")
             return None
+
+        # Filter sources if enabled
+        if relevant_sources and all_sources and len(relevant_sources) < len(all_sources):
+            print(f"  🔧 Filtering to {len(relevant_sources)}/{len(all_sources)} relevant sources...")
+
+            # Wait for source containers to load (they may load after query input)
+            try:
+                page.wait_for_selector('.single-source-container', timeout=5000, state="attached")
+                StealthUtils.random_delay(500, 800)  # Small extra wait for all sources
+            except:
+                print("    ⚠️ Source containers not found, skipping filter")
+
+            select_sources_in_browser(page, relevant_sources, all_sources)
+            StealthUtils.random_delay(500, 1000)
 
         # Type question (human-like, fast)
         print("  ⏳ Typing question...")
@@ -194,17 +230,24 @@ def main():
     parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook ID from library')
     parser.add_argument('--show-browser', action='store_true', help='Show browser')
+    parser.add_argument('--no-filter', action='store_true', help='Disable source filtering')
+    parser.add_argument('--keyword-filter', action='store_true',
+                        help='Use keyword matching instead of LLM for source filtering')
+    parser.add_argument('--threshold', type=int, default=5,
+                        help='Relevance threshold for LLM filter (1-10, default: 5)')
 
     args = parser.parse_args()
 
-    # Resolve notebook URL
+    # Resolve notebook URL and ID
     notebook_url = args.notebook_url
+    notebook_id = args.notebook_id
 
     if not notebook_url and args.notebook_id:
         library = NotebookLibrary()
         notebook = library.get_notebook(args.notebook_id)
         if notebook:
             notebook_url = notebook['url']
+            notebook_id = notebook['id']
         else:
             print(f"❌ Notebook '{args.notebook_id}' not found")
             return 1
@@ -215,6 +258,7 @@ def main():
         active = library.get_active_notebook()
         if active:
             notebook_url = active['url']
+            notebook_id = active['id']
             print(f"📚 Using active notebook: {active['name']}")
         else:
             # Show available notebooks
@@ -225,17 +269,21 @@ def main():
                     mark = " [ACTIVE]" if nb.get('id') == library.active_notebook_id else ""
                     print(f"  {nb['id']}: {nb['name']}{mark}")
                 print("\nSpecify with --notebook-id or set active:")
-                print("python scripts/run.py notebook_manager.py activate --id ID")
+                print("python3 scripts/run.py notebook_manager.py activate --id ID")
             else:
                 print("❌ No notebooks in library. Add one first:")
-                print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
+                print("python3 scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
             return 1
 
     # Ask the question
     answer = ask_notebooklm(
         question=args.question,
         notebook_url=notebook_url,
-        headless=not args.show_browser
+        notebook_id=notebook_id,
+        headless=not args.show_browser,
+        filter_sources=not args.no_filter,
+        use_llm_filter=not args.keyword_filter,
+        relevance_threshold=args.threshold
     )
 
     if answer:

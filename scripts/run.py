@@ -48,7 +48,7 @@ def ensure_venv():
 def main():
     """Main runner"""
     if len(sys.argv) < 2:
-        print("Usage: python run.py <script_name> [args...]")
+        print("Usage: python3 run.py <script_name> [args...]")
         print("\nAvailable scripts:")
         print("  ask_question.py    - Query NotebookLM")
         print("  notebook_manager.py - Manage notebook library")

@@ -8,7 +8,7 @@ Complete API documentation for all NotebookLM skill modules.
 
 ```bash
 # ✅ CORRECT:
-python scripts/run.py [script_name].py [arguments]
+python3 scripts/run.py [script_name].py [arguments]
 
 # ❌ WRONG:
 python scripts/[script_name].py [arguments]  # Will fail without venv!
@@ -17,20 +17,25 @@ python scripts/[script_name].py [arguments]  # Will fail without venv!
 ## Core Scripts
 
 ### ask_question.py
-Query NotebookLM with automated browser interaction.
+Query NotebookLM with automated browser interaction and intelligent source filtering.
 
 ```bash
 # Basic usage
-python scripts/run.py ask_question.py --question "Your question"
+python3 scripts/run.py ask_question.py --question "Your question"
 
 # With specific notebook
-python scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
+python3 scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
 
 # With direct URL
-python scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
+python3 scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
 
 # Show browser (debugging)
-python scripts/run.py ask_question.py --question "..." --show-browser
+python3 scripts/run.py ask_question.py --question "..." --show-browser
+
+# Source filtering options
+python3 scripts/run.py ask_question.py --question "..." --keyword-filter  # Use keywords instead of LLM
+python3 scripts/run.py ask_question.py --question "..." --threshold 7     # Higher = fewer sources (1-10)
+python3 scripts/run.py ask_question.py --question "..." --no-filter       # Disable source filtering
 ```
 
 **Parameters:**
@@ -38,68 +43,85 @@ python scripts/run.py ask_question.py --question "..." --show-browser
 - `--notebook-id`: Use notebook from library
 - `--notebook-url`: Use URL directly
 - `--show-browser`: Make browser visible
+- `--keyword-filter`: Use keyword matching instead of LLM scoring
+- `--threshold N`: Minimum relevance score for LLM filter (1-10, default: 5)
+- `--no-filter`: Disable source filtering entirely
+
+**Source Filtering Flow:**
+1. Loads cached source summaries from `data/library-source-summary/`
+2. LLM (Gemini → Claude → keywords) scores each source 1-10
+3. Deselects sources below threshold in browser
+4. Queries only relevant sources
 
 **Returns:** Answer text with follow-up prompt appended
 
 ### notebook_manager.py
-Manage notebook library with CRUD operations.
+Manage notebook library with CRUD operations and source summary management.
 
 ```bash
 # Smart Add (discover content first)
-python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
+python3 scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
 # Then add with discovered info
-python scripts/run.py notebook_manager.py add \
+python3 scripts/run.py notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Name" \
   --description "Description" \
   --topics "topic1,topic2"
 
 # Direct add (when you know the content)
-python scripts/run.py notebook_manager.py add \
+python3 scripts/run.py notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Name" \
   --description "What it contains" \
   --topics "topic1,topic2"
 
 # List notebooks
-python scripts/run.py notebook_manager.py list
+python3 scripts/run.py notebook_manager.py list
 
 # Search notebooks
-python scripts/run.py notebook_manager.py search --query "keyword"
+python3 scripts/run.py notebook_manager.py search --query "keyword"
 
 # Activate notebook
-python scripts/run.py notebook_manager.py activate --id notebook-id
+python3 scripts/run.py notebook_manager.py activate --id notebook-id
 
 # Remove notebook
-python scripts/run.py notebook_manager.py remove --id notebook-id
+python3 scripts/run.py notebook_manager.py remove --id notebook-id
 
 # Show statistics
-python scripts/run.py notebook_manager.py stats
+python3 scripts/run.py notebook_manager.py stats
+
+# Source Summary Management
+python3 scripts/run.py notebook_manager.py update-sources --id ID        # Update (incremental)
+python3 scripts/run.py notebook_manager.py update-sources --id ID --force # Re-extract all
+python3 scripts/run.py notebook_manager.py update-sources --all          # Update all notebooks
+python3 scripts/run.py notebook_manager.py show-sources --id ID          # Display cached summaries
 ```
 
 **Commands:**
-- `add`: Add notebook (requires --url, --name, --topics)
+- `add`: Add notebook (requires --url, --name, --topics) - auto-extracts source summaries
 - `list`: Show all notebooks
 - `search`: Find notebooks by keyword
 - `activate`: Set default notebook
 - `remove`: Delete from library
 - `stats`: Display library statistics
+- `update-sources`: Update source summaries (--force to re-extract all)
+- `show-sources`: Display cached source summaries
 
 ### auth_manager.py
 Handle Google authentication and browser state.
 
 ```bash
 # Setup (browser visible for login)
-python scripts/run.py auth_manager.py setup
+python3 scripts/run.py auth_manager.py setup
 
 # Check status
-python scripts/run.py auth_manager.py status
+python3 scripts/run.py auth_manager.py status
 
 # Re-authenticate
-python scripts/run.py auth_manager.py reauth
+python3 scripts/run.py auth_manager.py reauth
 
 # Clear authentication
-python scripts/run.py auth_manager.py clear
+python3 scripts/run.py auth_manager.py clear
 ```
 
 **Commands:**
@@ -113,16 +135,16 @@ Clean skill data with preservation options.
 
 ```bash
 # Preview cleanup
-python scripts/run.py cleanup_manager.py
+python3 scripts/run.py cleanup_manager.py
 
 # Execute cleanup
-python scripts/run.py cleanup_manager.py --confirm
+python3 scripts/run.py cleanup_manager.py --confirm
 
 # Keep library
-python scripts/run.py cleanup_manager.py --confirm --preserve-library
+python3 scripts/run.py cleanup_manager.py --confirm --preserve-library
 
 # Force without prompt
-python scripts/run.py cleanup_manager.py --confirm --force
+python3 scripts/run.py cleanup_manager.py --confirm --force
 ```
 
 **Options:**
@@ -135,11 +157,11 @@ Script wrapper that handles environment setup.
 
 ```bash
 # Usage
-python scripts/run.py [script_name].py [arguments]
+python3 scripts/run.py [script_name].py [arguments]
 
 # Examples
-python scripts/run.py auth_manager.py status
-python scripts/run.py ask_question.py --question "..."
+python3 scripts/run.py auth_manager.py status
+python3 scripts/run.py ask_question.py --question "..."
 ```
 
 **Automatic actions:**
@@ -186,10 +208,33 @@ Location: `~/.claude/skills/notebooklm/data/`
 
 ```
 data/
-├── library.json       # Notebook metadata
-├── auth_info.json     # Auth status
-└── browser_state/     # Browser cookies
-    └── state.json
+├── library.json              # Notebook metadata
+├── auth_info.json            # Auth status
+├── browser_state/            # Browser cookies
+│   └── state.json
+└── library-source-summary/   # Cached source summaries
+    └── {notebook-id}.md      # Source titles and summaries per notebook
+```
+
+**Source Summary Format:**
+```markdown
+# Source Summary: Notebook Name
+
+**Notebook ID:** `notebook-id`
+**Generated:** 2026-01-24 12:00:00
+**Total Sources:** 18
+
+---
+
+### Source Title 1.pdf
+
+Summary of the source content extracted from NotebookLM's Source Guide...
+
+---
+
+### Source Title 2.md
+
+Another source summary...
 ```
 
 **Security:** Protected by `.gitignore`, never commit.
@@ -287,6 +332,9 @@ def batch_research(questions, notebook_id):
 - `get_notebook(notebook_id)`
 - `activate_notebook(notebook_id)`
 - `remove_notebook(notebook_id)`
+- `fetch_source_summary(notebook_id)` - Extract source summaries via browser
+- `update_source_summary(notebook_id, force=False)` - Update cached summaries
+- `get_source_summary(notebook_id)` - Load cached summaries
 
 ### AuthManager
 - `is_authenticated()`
@@ -294,6 +342,19 @@ def batch_research(questions, notebook_id):
 - `get_auth_info()`
 - `clear_auth()`
 - `validate_auth()`
+
+### SourceFilter
+- `get_relevant_sources(question, use_llm=True, threshold=5)` - Score and filter sources
+- `_get_relevant_sources_llm(question, threshold)` - LLM-based scoring
+- `_get_relevant_sources_keywords(question)` - Keyword-based scoring
+- `_call_gemini(prompt)` - Call Gemini CLI
+- `_call_claude(prompt)` - Call Claude CLI (fallback)
+- `get_all_source_titles()` - Get all source titles
+
+### SourceExtractor
+- `extract_all_sources(notebook_url, headless=True)` - Extract all source summaries
+- `get_existing_sources(notebook_id)` - Load existing summaries
+- Used internally by NotebookLibrary
 
 ### BrowserSession (internal)
 - Handles browser automation

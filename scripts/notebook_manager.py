@@ -7,11 +7,14 @@ Based on the MCP server implementation
 
 import json
 import argparse
-import uuid
+import subprocess
+import sys
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+
+from config import SOURCE_SUMMARY_DIR, SOURCE_SUMMARY_QUERY
 
 
 class NotebookLibrary:
@@ -118,6 +121,11 @@ class NotebookLibrary:
         self._save_library()
 
         print(f"✅ Added notebook: {name} ({notebook_id})")
+
+        # Auto-fetch source summary for new notebooks
+        print("📋 Fetching source summary...")
+        self.fetch_source_summary(notebook_id)
+
         return notebook
 
     def remove_notebook(self, notebook_id: str) -> bool:
@@ -304,6 +312,111 @@ class NotebookLibrary:
             'library_path': str(self.library_file)
         }
 
+    def get_source_summary_path(self, notebook_id: str) -> Path:
+        """Get the path to the source summary file for a notebook"""
+        SOURCE_SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
+        return SOURCE_SUMMARY_DIR / f"{notebook_id}.md"
+
+    def has_source_summary(self, notebook_id: str) -> bool:
+        """Check if a source summary file exists for a notebook"""
+        return self.get_source_summary_path(notebook_id).exists()
+
+    def fetch_source_summary(self, notebook_id: str, force: bool = False) -> Optional[str]:
+        """
+        Fetch source summary from NotebookLM by clicking each source and extracting Source Guide
+
+        Args:
+            notebook_id: ID of the notebook
+            force: If True, re-extract all sources; if False, only extract new sources
+
+        Returns:
+            The source summary content, or None if failed
+        """
+        notebook = self.get_notebook(notebook_id)
+        if not notebook:
+            print(f"❌ Notebook not found: {notebook_id}")
+            return None
+
+        summary_path = self.get_source_summary_path(notebook_id)
+
+        # Always run the extractor - it handles incremental logic internally
+        print(f"🔍 Checking sources for: {notebook['name']}")
+
+        # Call source_extractor.py for click-based extraction
+        skill_dir = Path(__file__).parent.parent
+        extractor_script = skill_dir / "scripts" / "source_extractor.py"
+        venv_python = skill_dir / ".venv" / "bin" / "python"
+
+        if not venv_python.exists():
+            # Fallback to system python3
+            venv_python = "python3"
+
+        try:
+            cmd = [str(venv_python), str(extractor_script), "--notebook-id", notebook_id]
+            if force:
+                cmd.append("--force")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout (needs to click through all sources)
+            )
+
+            if result.returncode != 0:
+                print(f"❌ Failed to fetch source summary: {result.stderr}")
+                return None
+
+            # The extractor saves directly to the file, so just read it back
+            if summary_path.exists():
+                with open(summary_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            else:
+                print("❌ Source summary file was not created")
+                return None
+
+        except subprocess.TimeoutExpired:
+            print("❌ Timeout while fetching source summary")
+            return None
+        except Exception as e:
+            print(f"❌ Error fetching source summary: {e}")
+            return None
+
+    def _save_source_summary(self, notebook_id: str, notebook_name: str, content: str):
+        """Save source summary to markdown file"""
+        summary_path = self.get_source_summary_path(notebook_id)
+
+        # Create header with metadata
+        header = f"""# Source Summary: {notebook_name}
+
+**Notebook ID:** `{notebook_id}`
+**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+---
+
+## Sources
+
+"""
+
+        full_content = header + content
+
+        with open(summary_path, 'w') as f:
+            f.write(full_content)
+
+        print(f"✅ Saved source summary: {summary_path}")
+
+    def update_source_summary(self, notebook_id: str) -> Optional[str]:
+        """Force update the source summary for a notebook"""
+        return self.fetch_source_summary(notebook_id, force=True)
+
+    def get_source_summary(self, notebook_id: str) -> Optional[str]:
+        """Get the source summary content for a notebook"""
+        summary_path = self.get_source_summary_path(notebook_id)
+        if summary_path.exists():
+            with open(summary_path, 'r') as f:
+                return f.read()
+        return None
+
 
 def main():
     """Command-line interface for notebook management"""
@@ -337,6 +450,16 @@ def main():
 
     # Stats command
     subparsers.add_parser('stats', help='Show library statistics')
+
+    # Update sources command
+    update_sources_parser = subparsers.add_parser('update-sources', help='Update source summary for a notebook')
+    update_sources_parser.add_argument('--id', help='Notebook ID (uses active if not specified)')
+    update_sources_parser.add_argument('--all', action='store_true', help='Update all notebooks')
+    update_sources_parser.add_argument('--force', action='store_true', help='Force re-extraction of all sources (ignore existing)')
+
+    # Show sources command
+    show_sources_parser = subparsers.add_parser('show-sources', help='Show source summary for a notebook')
+    show_sources_parser.add_argument('--id', help='Notebook ID (uses active if not specified)')
 
     args = parser.parse_args()
 
@@ -401,6 +524,48 @@ def main():
         if stats['most_used_notebook']:
             print(f"  Most used: {stats['most_used_notebook']['name']} ({stats['most_used_notebook']['use_count']} uses)")
         print(f"  Library path: {stats['library_path']}")
+
+    elif args.command == 'update-sources':
+        force = getattr(args, 'force', False)
+        if args.all:
+            # Update all notebooks
+            notebooks = library.list_notebooks()
+            if not notebooks:
+                print("📚 No notebooks in library")
+            else:
+                print(f"🔄 Updating source summaries for {len(notebooks)} notebooks...")
+                for notebook in notebooks:
+                    library.fetch_source_summary(notebook['id'], force=force)
+        else:
+            # Update specific or active notebook
+            notebook_id = args.id
+            if not notebook_id:
+                active = library.get_active_notebook()
+                if active:
+                    notebook_id = active['id']
+                else:
+                    print("❌ No notebook ID specified and no active notebook set")
+                    sys.exit(1)
+
+            library.fetch_source_summary(notebook_id, force=force)
+
+    elif args.command == 'show-sources':
+        # Show source summary for a notebook
+        notebook_id = args.id
+        if not notebook_id:
+            active = library.get_active_notebook()
+            if active:
+                notebook_id = active['id']
+            else:
+                print("❌ No notebook ID specified and no active notebook set")
+                sys.exit(1)
+
+        summary = library.get_source_summary(notebook_id)
+        if summary:
+            print(summary)
+        else:
+            print(f"📄 No source summary found for: {notebook_id}")
+            print("   Run: python3 scripts/run.py notebook_manager.py update-sources --id " + notebook_id)
 
     else:
         parser.print_help()
