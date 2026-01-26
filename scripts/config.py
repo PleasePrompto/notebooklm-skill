@@ -39,6 +39,61 @@ RESPONSE_SELECTORS = [
     "[data-message-author='assistant']",
 ]
 
+# Add Source Dialog Selectors (based on NotebookLM UI Jan 2026)
+ADD_SOURCE_BUTTON_SELECTORS = [
+    'button:has-text("Add source")',
+    'button:has-text("Add sources")',
+    'button[aria-label*="Add source"]',
+    'button[aria-label*="Add sources"]',
+    '[data-test-id="add-source-button"]',
+]
+
+# Main dialog option buttons
+UPLOAD_FILES_BUTTON_SELECTORS = [
+    'button:has-text("Upload files")',
+    '[aria-label*="Upload files"]',
+    'button:has-text("Upload")',
+]
+
+WEBSITES_BUTTON_SELECTORS = [
+    'button:has-text("Websites")',
+    '[aria-label*="Websites"]',
+    'button:has-text("Website")',
+]
+
+COPIED_TEXT_BUTTON_SELECTORS = [
+    'button:has-text("Copied text")',
+    '[aria-label*="Copied text"]',
+    'button:has-text("Paste")',
+]
+
+# Input fields
+URL_TEXTAREA_SELECTORS = [
+    'textarea[placeholder*="Paste any links"]',
+    'textarea[placeholder*="link"]',
+    'textarea[placeholder*="URL"]',
+    'textarea',
+]
+
+TEXT_TEXTAREA_SELECTORS = [
+    'textarea[placeholder*="Paste"]',
+    'textarea[placeholder*="paste"]',
+    'textarea',
+]
+
+# Action buttons
+INSERT_BUTTON_SELECTORS = [
+    'button:has-text("Insert")',
+    'button:has-text("Add")',
+    'button[type="submit"]',
+]
+
+CLOSE_DIALOG_SELECTORS = [
+    'button[aria-label="Close"]',
+    'button:has-text("Close")',
+    '[aria-label="close"]',
+]
+
 # Browser Configuration
 BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver

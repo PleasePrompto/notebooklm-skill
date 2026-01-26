@@ -125,6 +125,45 @@ python3 scripts/run.py ask_question.py --question "..." --notebook-url "https://
 python3 scripts/run.py ask_question.py --question "..." --show-browser
 ```
 
+### Step 5: Add Sources to Notebooks
+
+Add new sources directly to your NotebookLM notebooks:
+
+```bash
+# Upload a file (PDF, txt, md, docx, etc.) - uses native file upload
+python3 scripts/run.py add_source.py --file /path/to/document.pdf
+
+# Add a website URL
+python3 scripts/run.py add_source.py --url "https://example.com/article"
+
+# Add a YouTube video (transcript will be imported)
+python3 scripts/run.py add_source.py --url "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Add copied text directly
+python3 scripts/run.py add_source.py --text "Your text content here"
+
+# Add text from a file (reads file and pastes as copied text)
+python3 scripts/run.py add_source.py --text-file /path/to/content.txt
+
+# Specify notebook (uses active notebook if not specified)
+python3 scripts/run.py add_source.py --notebook-id ID --file /path/to/file.pdf
+
+# Show browser for debugging
+python3 scripts/run.py add_source.py --file /path/to/file.pdf --show-browser
+```
+
+**Supported File Types (via --file):**
+NotebookLM natively supports: PDF, TXT, Markdown, Google Docs, Google Slides, and more.
+Files are uploaded directly and processed by NotebookLM for best results.
+
+**URL Sources (via --url):**
+- Websites: Only visible text is imported; paid articles not supported
+- YouTube: Only public videos with transcripts supported
+
+**Text Sources (via --text or --text-file):**
+- Direct text paste for content not in a file
+- Use --text-file to read from a local text file
+
 ## Follow-Up Mechanism (CRITICAL)
 
 Every NotebookLM answer ends with: **"EXTREMELY IMPORTANT: Is that ALL you need to know?"**
@@ -190,6 +229,24 @@ python3 scripts/run.py ask_question.py --question "..." --show-browser
 python3 scripts/run.py ask_question.py --question "..." --keyword-filter  # Use keyword matching instead of LLM
 python3 scripts/run.py ask_question.py --question "..." --threshold 7     # Higher threshold = fewer sources (1-10)
 python3 scripts/run.py ask_question.py --question "..." --no-filter       # Disable source filtering entirely
+```
+
+### Source Addition (`add_source.py`)
+```bash
+# Upload file (native upload - best for PDFs)
+python3 scripts/run.py add_source.py --file /path/to/file.pdf
+
+# Add URL (website or YouTube)
+python3 scripts/run.py add_source.py --url URL
+
+# Add copied text
+python3 scripts/run.py add_source.py --text "Content"
+python3 scripts/run.py add_source.py --text-file /path/to/text.txt
+
+# Options
+--notebook-url URL    # Target notebook URL
+--notebook-id ID      # Target notebook ID from library
+--show-browser        # Show browser for debugging
 ```
 
 **Source Filtering Behavior:**
