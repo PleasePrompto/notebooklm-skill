@@ -95,66 +95,85 @@ def list_sources_from_ui(notebook_url: str, headless: bool = True) -> list:
         sources = page.evaluate("""
             () => {
                 const sources = [];
+                const seenTexts = new Set();
 
-                // Method 1: Find source rows by looking for checkbox + text pattern
-                // Each source in NotebookLM has: [menu button] [icon] [source name] [checkbox]
+                // UI text to skip (exact matches)
+                const skipTexts = new Set(['check_box', 'more_vert', 'description', 'drive_pdf',
+                                   'markdown', 'web', 'select all', 'select all sources',
+                                   'sources', 'add source', 'add sources', 'video_youtube', 'link', 'pdf',
+                                   'more', 'less', 'expand', 'collapse', 'chat', 'studio',
+                                   'save to note', 'try deep research for an in-depth report and new sources!']);
 
-                // Find all checkboxes in the page - each source has one
-                const checkboxes = document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox, .mat-checkbox');
+                // Helper to check if text is a valid source name
+                const isValidSource = (text) => {
+                    if (!text || text.length < 3 || text.length > 150) return false;
+                    if (text.includes('\\n')) return false;
+
+                    // Skip UI elements (exact match, case insensitive)
+                    if (skipTexts.has(text.toLowerCase())) return false;
+
+                    // Skip if it starts with bullet points or looks like content
+                    if (text.startsWith('•') || text.startsWith('-') || text.startsWith('*')) return false;
+                    if (text.startsWith('How ') || text.startsWith('What ') || text.startsWith('Based on')) return false;
+
+                    return true;
+                };
+
+                // Primary method: Find the source list container first, then extract titles
+                // The source panel is typically on the left side of the page
+                // Each source row has: [icon] [title] [checkbox]
+
+                // Look for elements that have a checkbox sibling/child - these are source rows
+                const checkboxes = document.querySelectorAll('mat-checkbox, [role="checkbox"]');
 
                 for (const checkbox of checkboxes) {
-                    // Get the parent row/container
-                    let parent = checkbox.parentElement;
-                    for (let i = 0; i < 5 && parent; i++) {
-                        const text = parent.innerText?.trim();
-                        if (text && text.length > 5 && text.length < 300) {
-                            // Extract just the source name (not UI elements)
-                            const lines = text.split('\\n').filter(l => l.trim());
-                            for (const line of lines) {
-                                const cleaned = line.trim();
-                                // Skip UI text
-                                if (cleaned.length < 5) continue;
-                                if (['check_box', 'more_vert', 'description', 'drive_pdf',
-                                     'markdown', 'web', 'Select all'].some(p => cleaned.includes(p))) continue;
+                    const rect = checkbox.getBoundingClientRect();
+                    // Must be in left panel (x < 450) - this filters out main content
+                    if (rect.x > 450 || rect.x < 0) continue;
 
-                                // Check if it looks like a source name
-                                const hasExtension = /\\.(pdf|md|txt|docx)$/i.test(cleaned);
-                                const isWikipedia = cleaned.includes('Wikipedia');
-                                const hasCJK = /[\\u4e00-\\u9fff]/.test(cleaned);
-                                const hasPattern = /--/.test(cleaned) || /_/.test(cleaned);
-
-                                if ((hasExtension || isWikipedia || hasCJK || hasPattern) &&
-                                    !sources.includes(cleaned)) {
-                                    sources.push(cleaned);
-                                    break;  // Found source for this checkbox
-                                }
-                            }
-                            break;  // Found parent with text
+                    // Get the row container (parent that contains both title and checkbox)
+                    let row = checkbox.parentElement;
+                    for (let i = 0; i < 4 && row; i++) {
+                        const rowRect = row.getBoundingClientRect();
+                        // Row should be reasonably sized (not too tall = contains multiple items)
+                        if (rowRect.height > 30 && rowRect.height < 80) {
+                            break;
                         }
-                        parent = parent.parentElement;
+                        row = row.parentElement;
+                    }
+
+                    if (!row) continue;
+
+                    // Extract the title from this row
+                    // Look for span or div elements that contain the source name
+                    const textElements = row.querySelectorAll('span, div');
+                    for (const el of textElements) {
+                        const text = el.innerText?.trim();
+                        if (!text) continue;
+
+                        // Skip if it's too short or contains multiple lines
+                        if (text.length < 3 || text.length > 150) continue;
+                        if (text.includes('\\n')) continue;
+
+                        // Skip icon text
+                        if (skipTexts.has(text.toLowerCase())) continue;
+
+                        // This is likely the source title
+                        if (!seenTexts.has(text) && isValidSource(text)) {
+                            seenTexts.add(text);
+                            sources.push(text);
+                            break;  // Found title for this row
+                        }
                     }
                 }
 
-                // Method 2: If Method 1 didn't find enough, try looking at the sources panel directly
-                if (sources.length < 5) {
-                    // Find elements that look like source titles by their structure
-                    const allSpans = document.querySelectorAll('span');
-
-                    for (const span of allSpans) {
-                        const rect = span.getBoundingClientRect();
-                        // Must be in left panel
-                        if (rect.x > 350 || rect.x < 20) continue;
-
-                        const text = span.innerText?.trim();
-                        if (!text || text.length < 5 || text.length > 200) continue;
-                        if (text.includes('\\n')) continue;
-
-                        // Check if it's a valid source name
-                        const hasExtension = /\\.(pdf|md|txt|docx)$/i.test(text);
-                        const isWikipedia = text.includes('Wikipedia');
-                        const hasCJK = /[\\u4e00-\\u9fff]/.test(text);
-
-                        if ((hasExtension || isWikipedia || hasCJK) && !sources.includes(text)) {
+                // Fallback: If we didn't find enough, try looking for .source-title class
+                if (sources.length < 3) {
+                    const titleElements = document.querySelectorAll('.source-title, .source-name, [class*="source"][class*="title"]');
+                    for (const el of titleElements) {
+                        const text = el.innerText?.trim();
+                        if (text && isValidSource(text) && !seenTexts.has(text)) {
+                            seenTexts.add(text);
                             sources.push(text);
                         }
                     }

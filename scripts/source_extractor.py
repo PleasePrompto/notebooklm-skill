@@ -97,7 +97,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
 
         # Wait for the sources panel to load
         print("  ⏳ Waiting for sources panel...")
-        time.sleep(3)  # Give the page time to fully render
+        time.sleep(5)  # Give the page time to fully render
 
         # Find all source items in the sidebar
         # NotebookLM uses a list of source items - we need to find them
@@ -130,7 +130,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
             # Look for the Sources header and find items below it
             try:
                 # Wait a bit more for dynamic content
-                time.sleep(2)
+                time.sleep(4)
 
                 # Try finding source titles directly - look for common patterns
                 alt_selectors = [
@@ -201,49 +201,98 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
         print("  📝 Collecting all source titles...")
         source_titles = page.evaluate("""
             () => {
-                const titles = [];
-                // Find all elements that look like source titles
-                const elements = document.querySelectorAll('.source-title, .source-name, [data-testid*="source"], button, [role="button"]');
+                const sources = [];
+                const seenTexts = new Set();
 
-                for (const el of elements) {
-                    const text = el.innerText?.trim();
-                    // Source titles typically have file extensions or are meaningful text
-                    if (text && (text.includes('.pdf') || text.includes('.md') || text.includes('.txt') ||
-                        text.length > 10 && text.length < 200 && !text.includes('\\n'))) {
-                        if (!titles.includes(text)) {
-                            titles.push(text);
+                // UI text to skip (exact matches)
+                const skipTexts = new Set(['check_box', 'more_vert', 'description', 'drive_pdf',
+                                   'markdown', 'web', 'select all', 'select all sources',
+                                   'sources', 'add source', 'add sources', 'video_youtube', 'link', 'pdf',
+                                   'more', 'less', 'expand', 'collapse', 'chat', 'studio',
+                                   'save to note', 'try deep research for an in-depth report and new sources!']);
+
+                // Helper to check if text is a valid source name
+                const isValidSource = (text) => {
+                    if (!text || text.length < 3 || text.length > 150) return false;
+                    if (text.includes('\\n')) return false;
+
+                    // Skip UI elements (exact match, case insensitive)
+                    if (skipTexts.has(text.toLowerCase())) return false;
+
+                    // Skip if it starts with bullet points or looks like content
+                    if (text.startsWith('•') || text.startsWith('-') || text.startsWith('*')) return false;
+                    if (text.startsWith('How ') || text.startsWith('What ') || text.startsWith('Based on')) return false;
+
+                    return true;
+                };
+
+                // Primary method: Find the source list container first, then extract titles
+                // The source panel is typically on the left side of the page
+                // Each source row has: [icon] [title] [checkbox]
+
+                // Look for elements that have a checkbox sibling/child - these are source rows
+                const checkboxes = document.querySelectorAll('mat-checkbox, [role="checkbox"]');
+
+                for (const checkbox of checkboxes) {
+                    const rect = checkbox.getBoundingClientRect();
+                    // Must be in left panel (x < 450) - this filters out main content
+                    if (rect.x > 450 || rect.x < 0) continue;
+
+                    // Get the row container (parent that contains both title and checkbox)
+                    let row = checkbox.parentElement;
+                    for (let i = 0; i < 4 && row; i++) {
+                        const rowRect = row.getBoundingClientRect();
+                        // Row should be reasonably sized (not too tall = contains multiple items)
+                        if (rowRect.height > 30 && rowRect.height < 80) {
+                            break;
+                        }
+                        row = row.parentElement;
+                    }
+
+                    if (!row) continue;
+
+                    // Extract the title from this row
+                    // Look for span or div elements that contain the source name
+                    const textElements = row.querySelectorAll('span, div');
+                    for (const el of textElements) {
+                        const text = el.innerText?.trim();
+                        if (!text) continue;
+
+                        // Skip if it's too short or contains multiple lines
+                        if (text.length < 3 || text.length > 150) continue;
+                        if (text.includes('\\n')) continue;
+
+                        // Skip icon text
+                        if (skipTexts.has(text.toLowerCase())) continue;
+
+                        // This is likely the source title
+                        if (!seenTexts.has(text) && isValidSource(text)) {
+                            seenTexts.add(text);
+                            sources.push(text);
+                            break;  // Found title for this row
                         }
                     }
                 }
-                return titles;
+
+                // Fallback: If we didn't find enough, try looking for .source-title class
+                if (sources.length < 3) {
+                    const titleElements = document.querySelectorAll('.source-title, .source-name, [class*="source"][class*="title"]');
+                    for (const el of titleElements) {
+                        const text = el.innerText?.trim();
+                        if (text && isValidSource(text) && !seenTexts.has(text)) {
+                            seenTexts.add(text);
+                            sources.push(text);
+                        }
+                    }
+                }
+
+                return sources;
             }
         """)
 
         if not source_titles:
             print("  ⚠️ Could not get source titles")
             return []
-
-        # Filter to only get actual source files
-        source_titles = [t for t in source_titles if
-                        '.pdf' in t.lower() or '.md' in t.lower() or
-                        '.txt' in t.lower() or '幕末' in t or '維新' in t or
-                        'Meiji' in t or 'Kido' in t or 'diary' in t.lower()]
-
-        if not source_titles:
-            # Fallback - use all collected titles
-            source_titles = page.evaluate("""
-                () => {
-                    const titles = [];
-                    const elements = document.querySelectorAll('button, [role="button"], [role="listitem"]');
-                    for (const el of elements) {
-                        const text = el.innerText?.trim();
-                        if (text && text.length > 5 && text.length < 150 && !titles.includes(text)) {
-                            titles.push(text);
-                        }
-                    }
-                    return titles.slice(0, 30);  // Limit to first 30
-                }
-            """)
 
         total_sources = len(source_titles)
 
@@ -267,7 +316,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
                 # Navigate back to the notebook main page to ensure source list is visible
                 if i > 0:
                     page.goto(notebook_url, wait_until="domcontentloaded")
-                    time.sleep(2)
+                    time.sleep(4)  # Wait for sources panel to reload
 
                 # Use Playwright locator to find and click the source by text
                 try:
@@ -294,7 +343,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
                         print(f"      ⚠️ Could not click source")
                         continue
 
-                StealthUtils.random_delay(2000, 3000)
+                StealthUtils.random_delay(4000, 6000)  # Wait longer for Source Guide to load
 
                 # Extract the Source Guide content
                 source_guide_text = page.evaluate("""

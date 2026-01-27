@@ -220,7 +220,7 @@ Guide what the AI hosts focus on:
 
 **Note:** Audio generation can take 5-10 minutes. The script will show progress updates while waiting.
 
-### Step 7: Generate Video Overview
+### Step 9: Generate Video Overview
 
 Generate video summaries of your notebook content with customizable format, visual style, and instructions:
 
@@ -276,7 +276,7 @@ Guide what the AI hosts focus on:
 
 **Note:** Video generation can take several minutes. The script will show progress updates while waiting.
 
-### Step 8: Remove Source (USE WITH CAUTION)
+### Step 10: Remove Source (USE WITH CAUTION)
 
 > **WARNING:** This action is **PERMANENT** and cannot be undone. Only use when the user explicitly requests source removal.
 
