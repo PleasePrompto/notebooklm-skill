@@ -167,7 +167,12 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 │   ├── notebook_manager.py # Library + source summary management
 │   ├── auth_manager.py     # Google authentication
 │   ├── source_filter.py    # LLM-based relevance scoring
-│   └── source_extractor.py # Extract source summaries from notebooks
+│   ├── source_extractor.py # Extract source summaries from notebooks
+│   ├── add_source.py       # Add sources (files, URLs, text)
+│   ├── list_sources.py     # List sources via UI scraping
+│   ├── remove_source.py    # Remove sources (with safety confirmation)
+│   ├── audio_generator.py  # Generate Audio Overviews
+│   └── video_generator.py  # Generate Video Overviews
 ├── .venv/                  # Isolated Python environment (auto-created)
 └── data/                   # Local notebook library + source summaries
 ```
@@ -207,6 +212,26 @@ When you add a notebook, the skill automatically:
 - Caches them locally for instant relevance scoring
 - Updates incrementally (only fetches new sources)
 
+### **Source Management**
+Add, list, and remove sources directly from Claude Code:
+- **Add sources**: Upload PDFs, paste URLs (websites/YouTube), or add text directly
+- **List sources**: View all sources in a notebook via reliable UI scraping
+- **Remove sources**: Permanently delete sources with safety confirmation
+
+### **Audio Overview Generation**
+Generate podcast-style audio summaries of your notebook content:
+- **Formats**: Deep Dive, Brief, Critique, Debate
+- **Lengths**: Short, Default, Long
+- **Multi-language support**: English, Spanish, Japanese, and more
+- **Custom instructions**: Guide what the AI hosts focus on
+
+### **Video Overview Generation**
+Generate video summaries with customizable visual styles:
+- **Formats**: Explainer, Brief
+- **Visual styles**: Auto, Classic, Whiteboard, Kawaii, Anime
+- **Multi-language support**
+- **Custom instructions**: Target specific use cases or audiences
+
 ### **Automatic Authentication**
 One-time Google login, then authentication persists across sessions.
 
@@ -229,6 +254,12 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 | *"Use the React notebook"* | Sets active notebook |
 | *"Update sources for my notebook"* | Re-fetches source summaries |
 | *"Show sources in my notebook"* | Displays cached source summaries |
+| *"Add this PDF to my notebook"* | Uploads file as a new source |
+| *"Add this URL to my notebook"* | Adds website or YouTube video as source |
+| *"List sources in my notebook"* | Shows all sources via UI scraping |
+| *"Remove [source] from my notebook"* | Permanently deletes a source (with confirmation) |
+| *"Generate an audio overview"* | Creates podcast-style audio summary |
+| *"Generate a video overview"* | Creates video summary with visuals |
 | *"Clear NotebookLM data"* | Fresh start (keeps library) |
 
 ---
