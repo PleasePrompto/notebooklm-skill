@@ -105,3 +105,65 @@ class StealthUtils:
         StealthUtils.random_delay(100, 300)
         element.click()
         StealthUtils.random_delay(100, 300)
+
+
+class DownloadHandler:
+    """Utilities for handling file downloads"""
+
+    @staticmethod
+    def wait_for_download(
+        page: Page,
+        trigger_action,
+        download_dir: str,
+        timeout: int = 60000
+    ) -> Optional[str]:
+        """
+        Wait for a download to complete after triggering an action.
+        Returns the path to the downloaded file.
+        """
+        try:
+            with page.expect_download(timeout=timeout) as download_info:
+                trigger_action()
+
+            download = download_info.value
+            suggested_filename = download.suggested_filename
+            download_path = f"{download_dir}/{suggested_filename}"
+
+            download.save_as(download_path)
+            return download_path
+
+        except Exception as e:
+            print(f"    Download failed: {e}")
+            return None
+
+    @staticmethod
+    def download_with_custom_name(
+        page: Page,
+        trigger_action,
+        download_dir: str,
+        custom_filename: str,
+        timeout: int = 60000
+    ) -> Optional[str]:
+        """
+        Wait for a download and save with a custom filename.
+        Returns the path to the downloaded file.
+        """
+        try:
+            with page.expect_download(timeout=timeout) as download_info:
+                trigger_action()
+
+            download = download_info.value
+
+            # Preserve extension from suggested filename if custom doesn't have one
+            suggested = download.suggested_filename
+            if '.' not in custom_filename and '.' in suggested:
+                ext = suggested.rsplit('.', 1)[-1]
+                custom_filename = f"{custom_filename}.{ext}"
+
+            download_path = f"{download_dir}/{custom_filename}"
+            download.save_as(download_path)
+            return download_path
+
+        except Exception as e:
+            print(f"    Download failed: {e}")
+            return None

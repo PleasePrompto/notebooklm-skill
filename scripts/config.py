@@ -109,3 +109,110 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 LOGIN_TIMEOUT_MINUTES = 10
 QUERY_TIMEOUT_SECONDS = 120
 PAGE_LOAD_TIMEOUT = 30000
+AUDIO_GENERATION_TIMEOUT = 900000  # 15 minutes for audio generation
+
+# Audio Overview Selectors
+AUDIO_OVERVIEW_CARD_SELECTORS = [
+    'div:has-text("Audio Overview")',
+    '[aria-label="Audio Overview"]',
+]
+
+AUDIO_CUSTOMIZE_BUTTON_SELECTORS = [
+    'button[aria-label="Customize Audio Overview"]',
+    'div:has-text("Audio Overview") button',
+]
+
+AUDIO_FORMAT_SELECTORS = {
+    'deep_dive': [
+        'div:has-text("Deep Dive")',
+        '[data-format="deep_dive"]',
+    ],
+    'brief': [
+        'div:has-text("Brief")',
+        '[data-format="brief"]',
+    ],
+    'critique': [
+        'div:has-text("Critique")',
+        '[data-format="critique"]',
+    ],
+    'debate': [
+        'div:has-text("Debate")',
+        '[data-format="debate"]',
+    ],
+}
+
+AUDIO_LENGTH_SELECTORS = {
+    'short': [
+        'button:has-text("Short")',
+        '[data-length="short"]',
+    ],
+    'default': [
+        'button:has-text("Default")',
+        '[data-length="default"]',
+    ],
+    'long': [
+        'button:has-text("Long")',
+        '[data-length="long"]',
+    ],
+}
+
+AUDIO_INSTRUCTIONS_SELECTORS = [
+    'textarea[placeholder*="Things to try"]',
+    'textarea[placeholder*="focus"]',
+    '[aria-label*="What should the AI hosts focus on"]',
+    'textarea',
+]
+
+AUDIO_GENERATE_BUTTON_SELECTORS = [
+    'button:has-text("Generate")',
+    '[aria-label="Generate"]',
+    'button.generate-button',
+]
+
+AUDIO_MENU_BUTTON_SELECTORS = [
+    'button[aria-label="More options"]',
+    'button[aria-label="Options"]',
+    'button:has([data-icon="more_vert"])',
+]
+
+AUDIO_DOWNLOAD_MENU_SELECTORS = [
+    '[role="menuitem"]:has-text("Download")',
+    'li:has-text("Download")',
+    'button:has-text("Download")',
+    'div:has-text("Download")',
+]
+
+AUDIO_GENERATING_SELECTORS = [
+    'div:has-text("Generating Audio Overview")',
+    ':text("Generating Audio Overview")',
+    ':text("Come back in a few minutes")',
+    '[aria-label="Generating"]',
+]
+
+# Source Management Selectors (for removing/renaming sources)
+SOURCE_ITEM_SELECTORS = [
+    '[data-test-id="source-item"]',
+    '.source-item',
+    'div[role="listitem"]',
+]
+
+SOURCE_MENU_BUTTON_SELECTORS = [
+    'button[aria-label="More options"]',
+    'button[aria-label="Source options"]',
+    'button:has([data-icon="more_vert"])',
+    'button:has-text("⋮")',
+]
+
+SOURCE_REMOVE_MENU_SELECTORS = [
+    '[role="menuitem"]:has-text("Remove source")',
+    'li:has-text("Remove source")',
+    'button:has-text("Remove source")',
+    'div:has-text("Remove source")',
+]
+
+SOURCE_CONFIRM_REMOVE_SELECTORS = [
+    'button:has-text("Remove")',
+    'button:has-text("Delete")',
+    'button:has-text("Confirm")',
+    '[data-action="confirm-remove"]',
+]

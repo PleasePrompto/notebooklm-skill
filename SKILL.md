@@ -41,6 +41,8 @@ NEVER guess or use generic descriptions! If details missing, use Smart Add to di
 
 **NEVER call scripts directly. ALWAYS use `python3 scripts/run.py [script]`:**
 
+> **Note:** Use `python3` if available, otherwise use `python`. Check with `which python3 || which python`.
+
 ```bash
 # ✅ CORRECT - Always use run.py:
 python3 scripts/run.py auth_manager.py status
@@ -164,6 +166,82 @@ Files are uploaded directly and processed by NotebookLM for best results.
 - Direct text paste for content not in a file
 - Use --text-file to read from a local text file
 
+### Step 6: Generate Audio Overview
+
+Generate podcast-style audio summaries of your notebook content with customizable prompts:
+
+```bash
+# Basic audio generation (uses default settings)
+python3 scripts/run.py audio_generator.py --notebook-url "https://notebooklm.google.com/notebook/..."
+
+# With custom prompt/instructions
+python3 scripts/run.py audio_generator.py --notebook-url URL --instructions "Focus on the main arguments and explain like I'm a beginner"
+
+# Choose format and length
+python3 scripts/run.py audio_generator.py --notebook-id ID --format brief --length short
+
+# Full customization with output filename
+python3 scripts/run.py audio_generator.py --notebook-id ID \
+  --format deep_dive \
+  --length long \
+  --instructions "Discuss the technical implementation details" \
+  --output "my_podcast.wav"
+
+# Show browser for debugging
+python3 scripts/run.py audio_generator.py --notebook-url URL --show-browser
+```
+
+**Audio Format Options:**
+| Format | Description |
+|--------|-------------|
+| `deep_dive` | A lively conversation between two hosts, unpacking and connecting topics (default) |
+| `brief` | A bite-sized overview to grasp core ideas quickly |
+| `critique` | An expert review with constructive feedback |
+| `debate` | A thoughtful debate illuminating different perspectives |
+
+**Audio Length Options:**
+- `short` - Quick summary
+- `default` - Standard length
+- `long` - Extended discussion
+
+**Custom Instructions (--instructions):**
+Guide what the AI hosts focus on:
+- Focus on a specific source: "only cover the article about Italy"
+- Focus on a specific topic: "just discuss the novel's main character"
+- Target an audience: "explain to someone new to biology"
+- Request a style: "make it conversational and fun"
+
+**Note:** Audio generation can take 5-10 minutes. The script will show progress updates while waiting.
+
+### Step 7: Remove Source (USE WITH CAUTION)
+
+> **WARNING:** This action is **PERMANENT** and cannot be undone. Only use when the user explicitly requests source removal.
+
+**When to use:** ONLY when the user specifically asks to delete/remove a source permanently.
+
+**When NOT to use:** If a source is just irrelevant to a query, use source filtering (deselect in queries) instead of removing it.
+
+```bash
+# Remove a source (requires --confirm flag for safety)
+python3 scripts/run.py remove_source.py --notebook-url URL --source "Source Name" --confirm
+
+# Using notebook ID
+python3 scripts/run.py remove_source.py --notebook-id ID --source "Source Name" --confirm
+
+# Show browser for debugging
+python3 scripts/run.py remove_source.py --notebook-id ID --source "Source Name" --confirm --show-browser
+```
+
+**Safety Features:**
+- Requires `--confirm` flag - won't run without it
+- Partial name matching supported (be careful to match the right source!)
+- Multiple warnings before execution
+
+**Claude Behavior:**
+- NEVER use this unless user explicitly says "remove", "delete", or "permanently remove" a source
+- If user just says a source is "not needed" for a query, use source filtering instead
+- Always confirm with user before running this command
+
 ## Follow-Up Mechanism (CRITICAL)
 
 Every NotebookLM answer ends with: **"EXTREMELY IMPORTANT: Is that ALL you need to know?"**
@@ -249,12 +327,54 @@ python3 scripts/run.py add_source.py --text-file /path/to/text.txt
 --show-browser        # Show browser for debugging
 ```
 
+### Source Listing (`list_sources.py`)
+```bash
+# List sources in active notebook (reads UI directly - more reliable than asking)
+python3 scripts/run.py list_sources.py
+
+# List sources in specific notebook
+python3 scripts/run.py list_sources.py --notebook-id ID
+python3 scripts/run.py list_sources.py --notebook-url URL
+
+# Output as JSON
+python3 scripts/run.py list_sources.py --json
+
+# Show browser for debugging
+python3 scripts/run.py list_sources.py --show-browser
+```
+**Note:** This reads source names directly from the UI, which is more reliable than asking NotebookLM to list sources via a question. Use this to verify sources before/after removal.
+
 **Source Filtering Behavior:**
 Before each query, the skill automatically:
 1. Loads cached source summaries from `data/library-source-summary/{notebook-id}.md`
 2. Uses LLM (Gemini → Claude → keywords fallback) to score each source's relevance (1-10)
 3. Deselects sources below threshold in the browser
 4. Queries only relevant sources for faster, focused responses
+
+### Audio Generation (`audio_generator.py`)
+```bash
+# Generate with defaults
+python3 scripts/run.py audio_generator.py --notebook-url URL
+
+# With custom prompt
+python3 scripts/run.py audio_generator.py --notebook-id ID --instructions "Your prompt here"
+
+# Full options
+python3 scripts/run.py audio_generator.py --notebook-url URL \
+  --format deep_dive|brief|critique|debate \
+  --length short|default|long \
+  --instructions "Custom prompt" \
+  --output filename.wav \
+  --show-browser
+```
+
+### Source Removal (`remove_source.py`) - PERMANENT ACTION
+```bash
+# Remove a source (--confirm REQUIRED)
+python3 scripts/run.py remove_source.py --notebook-url URL --source "Source Name" --confirm
+python3 scripts/run.py remove_source.py --notebook-id ID --source "Source Name" --confirm --show-browser
+```
+**WARNING:** Only use when user explicitly requests permanent removal. Use source filtering for temporary exclusion.
 
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
@@ -346,11 +466,16 @@ Source summaries auto-extracted and cached
     ↓
 Activate notebook → python3 scripts/run.py notebook_manager.py activate --id ID
     ↓
-Ask question → python3 scripts/run.py ask_question.py --question "..."
+┌─────────────────────────────────────────────────────────────┐
+│ Choose action based on user request:                        │
+├─────────────────────────────────────────────────────────────┤
+│ Ask question → python3 scripts/run.py ask_question.py ...   │
+│ Generate audio → python3 scripts/run.py audio_generator.py  │
+└─────────────────────────────────────────────────────────────┘
     ↓
-LLM filters sources → Deselects irrelevant ones
+(For questions) See "Is that ALL you need?" → Ask follow-ups until complete
     ↓
-See "Is that ALL you need?" → Ask follow-ups until complete
+(For audio) Wait for generation (5-10 min) → Download audio file
     ↓
 Synthesize and respond to user
 ```
@@ -364,6 +489,8 @@ Synthesize and respond to user
 | Rate limit (50/day) | Wait or switch Google account |
 | Browser crashes | `python3 scripts/run.py cleanup_manager.py --preserve-library` |
 | Notebook not found | Check with `notebook_manager.py list` |
+| Source not relevant | Use `--no-filter` or adjust `--threshold` - DON'T remove it |
+| Need to delete source | Only use `remove_source.py` if user explicitly requests permanent deletion |
 
 ## Best Practices
 
@@ -373,6 +500,7 @@ Synthesize and respond to user
 4. **Browser visible for auth** - Required for manual login
 5. **Include context** - Each question is independent
 6. **Synthesize answers** - Combine multiple responses
+7. **Filter, don't delete** - Use source filtering for irrelevant sources; only use `remove_source.py` when user explicitly asks for permanent deletion
 
 ## Limitations
 
@@ -380,6 +508,7 @@ Synthesize and respond to user
 - Rate limits on free Google accounts (50 queries/day)
 - Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
+- Audio generation takes 5-10 minutes (NotebookLM limitation)
 
 ## Resources (Skill Structure)
 

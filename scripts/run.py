@@ -7,7 +7,20 @@ Ensures all scripts run with the correct virtual environment
 import os
 import sys
 import subprocess
+import shutil
 from pathlib import Path
+
+
+def get_system_python_command():
+    """Get the system Python command (python3 or python)"""
+    # Check python3 first (preferred)
+    if shutil.which('python3'):
+        return 'python3'
+    # Fall back to python
+    if shutil.which('python'):
+        return 'python'
+    # Last resort - use whatever ran this script
+    return sys.executable
 
 
 def get_venv_python():
@@ -48,10 +61,15 @@ def ensure_venv():
 def main():
     """Main runner"""
     if len(sys.argv) < 2:
-        print("Usage: python3 run.py <script_name> [args...]")
+        python_cmd = get_system_python_command()
+        print(f"Usage: {python_cmd} run.py <script_name> [args...]")
         print("\nAvailable scripts:")
-        print("  ask_question.py    - Query NotebookLM")
+        print("  ask_question.py     - Query NotebookLM")
         print("  notebook_manager.py - Manage notebook library")
+        print("  audio_generator.py  - Generate Audio Overview with custom prompts")
+        print("  add_source.py       - Add sources to notebooks")
+        print("  list_sources.py     - List sources by reading UI (reliable)")
+        print("  remove_source.py    - Remove source from notebook (PERMANENT)")
         print("  session_manager.py  - Manage sessions")
         print("  auth_manager.py     - Handle authentication")
         print("  cleanup_manager.py  - Clean up skill data")
