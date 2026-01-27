@@ -8,7 +8,7 @@ import argparse
 import sys
 import re
 import time
-import os
+import traceback
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -23,173 +23,20 @@ from config import (
     AUDIO_CUSTOMIZE_BUTTON_SELECTORS,
     AUDIO_FORMAT_SELECTORS,
     AUDIO_LENGTH_SELECTORS,
-    AUDIO_LANGUAGE_DROPDOWN_SELECTORS,
     AUDIO_INSTRUCTIONS_SELECTORS,
     AUDIO_GENERATE_BUTTON_SELECTORS,
-    AUDIO_MENU_BUTTON_SELECTORS,
-    AUDIO_DOWNLOAD_MENU_SELECTORS,
     AUDIO_GENERATING_SELECTORS,
     AUDIO_GENERATION_TIMEOUT,
     PAGE_LOAD_TIMEOUT,
-    get_language_display_name
 )
-from browser_utils import BrowserFactory, StealthUtils, DownloadHandler
+from browser_utils import (
+    BrowserFactory,
+    StealthUtils,
+    find_element_with_selectors,
+    select_language,
+    get_all_sources_from_ui,
+)
 from source_filter import select_sources_in_browser
-
-
-def find_element_with_selectors(page, selectors: list, timeout: int = 5000):
-    """Try multiple selectors and return first match."""
-    for selector in selectors:
-        try:
-            element = page.wait_for_selector(selector, timeout=timeout, state="visible")
-            if element:
-                return element, selector
-        except:
-            continue
-    return None, None
-
-
-def select_language(page, language: str) -> bool:
-    """
-    Select a language from the dropdown menu.
-
-    Args:
-        page: Playwright page object
-        language: Language name in English (e.g., "Japanese") or native script (e.g., "日本語")
-
-    Returns:
-        True if language was selected, False otherwise
-    """
-    # Convert English name to native script display name
-    display_name = get_language_display_name(language)
-    print(f"    Selecting language: {language} → {display_name}")
-
-    try:
-        # Step 1: Find and click the language dropdown
-        dropdown_opened = False
-
-        # Try clicking on the element that shows current language selection
-        try:
-            lang_dropdown = page.locator('mat-select:has-text("English"), div[role="combobox"]:has-text("English"), div[role="listbox"]:has-text("English")').first
-            if lang_dropdown.is_visible(timeout=2000):
-                lang_dropdown.click()
-                dropdown_opened = True
-        except:
-            pass
-
-        if not dropdown_opened:
-            # Try finding by structure - look for the language section
-            try:
-                lang_section = page.locator('div:has-text("Choose language")').first
-                if lang_section.is_visible(timeout=1000):
-                    dropdown = lang_section.locator('mat-select, [role="combobox"], div:has-text("English")').first
-                    if dropdown.is_visible(timeout=1000):
-                        dropdown.click()
-                        dropdown_opened = True
-            except:
-                pass
-
-        if not dropdown_opened:
-            print("     Could not find language dropdown")
-            page.screenshot(path="/tmp/notebooklm_language_debug.png")
-            return False
-
-        StealthUtils.random_delay(500, 800)
-
-        # Step 2: Find and click the language option by its display name (native script)
-        # Try to find and click the language option directly
-        try:
-            lang_option = page.locator(f'div:text-is("{display_name}"), span:text-is("{display_name}")').first
-            if lang_option.is_visible(timeout=3000):
-                lang_option.scroll_into_view_if_needed()
-                lang_option.click()
-                StealthUtils.random_delay(500, 800)
-                print(f"     Selected: {display_name}")
-                return True
-        except:
-            pass
-
-        # Fallback: try get_by_text with exact match
-        try:
-            lang_option = page.get_by_text(display_name, exact=True).first
-            if lang_option.is_visible(timeout=2000):
-                lang_option.scroll_into_view_if_needed()
-                lang_option.click()
-                StealthUtils.random_delay(500, 800)
-                print(f"     Selected: {display_name}")
-                return True
-        except:
-            pass
-
-        # Another fallback: use role="option" selector
-        try:
-            lang_option = page.locator(f'[role="option"]:has-text("{display_name}")').first
-            if lang_option.is_visible(timeout=2000):
-                lang_option.scroll_into_view_if_needed()
-                lang_option.click()
-                StealthUtils.random_delay(500, 800)
-                print(f"     Selected: {display_name}")
-                return True
-        except:
-            pass
-
-        print(f"     Could not find language option: {display_name}")
-        page.screenshot(path="/tmp/notebooklm_language_options_debug.png")
-        page.keyboard.press("Escape")
-        return False
-
-    except Exception as e:
-        print(f"     Language selection error: {e}")
-        return False
-
-
-def get_all_sources_from_ui(page) -> list:
-    """
-    Get all source titles from the NotebookLM UI.
-
-    Args:
-        page: Playwright page object
-
-    Returns:
-        List of source titles
-    """
-    sources = page.evaluate("""
-        () => {
-            const sources = [];
-            const checkboxes = document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox, .mat-checkbox');
-
-            for (const checkbox of checkboxes) {
-                let parent = checkbox.parentElement;
-                for (let i = 0; i < 5 && parent; i++) {
-                    const text = parent.innerText?.trim();
-                    if (text && text.length > 5 && text.length < 300) {
-                        const lines = text.split('\\n').filter(l => l.trim());
-                        for (const line of lines) {
-                            const cleaned = line.trim();
-                            if (cleaned.length < 5) continue;
-                            if (['check_box', 'more_vert', 'description', 'drive_pdf',
-                                 'markdown', 'web', 'Select all'].some(p => cleaned.includes(p))) continue;
-
-                            const hasExtension = /\\.(pdf|md|txt|docx)$/i.test(cleaned);
-                            const isWikipedia = cleaned.includes('Wikipedia');
-                            const hasCJK = /[\\u4e00-\\u9fff]/.test(cleaned);
-                            const hasPattern = /--/.test(cleaned) || /_/.test(cleaned);
-
-                            if ((hasExtension || isWikipedia || hasCJK || hasPattern) &&
-                                !sources.includes(cleaned)) {
-                                sources.push(cleaned);
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                    parent = parent.parentElement;
-                }
-            }
-            return sources;
-        }
-    """)
-    return sources
 
 
 def generate_audio(
@@ -346,7 +193,7 @@ def generate_audio(
                 if format_card.is_visible(timeout=2000):
                     format_card.click()
                     format_selected = True
-            except:
+            except Exception:
                 pass
 
             if not format_selected:
@@ -357,7 +204,7 @@ def generate_audio(
                         # Click the parent card
                         format_el.locator('..').locator('..').click()
                         format_selected = True
-                except:
+                except Exception:
                     pass
 
             if format_selected:
@@ -434,7 +281,7 @@ def generate_audio(
         print("    Waiting for Generate button to be enabled...")
         try:
             page.wait_for_selector('button:has-text("Generate"):not([disabled])', timeout=10000)
-        except:
+        except Exception:
             print("     Generate button seems disabled, trying to click anyway...")
 
         StealthUtils.random_delay(500, 1000)
@@ -478,7 +325,7 @@ def generate_audio(
                     if gen_indicator and gen_indicator.is_visible():
                         generating = True
                         break
-                except:
+                except Exception:
                     continue
 
             if generating:
@@ -502,7 +349,7 @@ def generate_audio(
                         if gen_indicator and gen_indicator.is_visible():
                             still_generating = True
                             break
-                    except:
+                    except Exception:
                         continue
 
                 if not still_generating:
@@ -668,7 +515,6 @@ def generate_audio(
 
     except Exception as e:
         print(f"   Error: {e}")
-        import traceback
         traceback.print_exc()
         return None
 
@@ -676,12 +522,12 @@ def generate_audio(
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 

@@ -7,6 +7,7 @@ CAUTION: This permanently removes a source from a notebook. Use with care.
 import argparse
 import sys
 import re
+import traceback
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -22,19 +23,7 @@ from config import (
     SOURCE_CONFIRM_REMOVE_SELECTORS,
     PAGE_LOAD_TIMEOUT
 )
-from browser_utils import BrowserFactory, StealthUtils
-
-
-def find_element_with_selectors(page, selectors: list, timeout: int = 5000):
-    """Try multiple selectors and return first match."""
-    for selector in selectors:
-        try:
-            element = page.wait_for_selector(selector, timeout=timeout, state="visible")
-            if element:
-                return element, selector
-        except:
-            continue
-    return None, None
+from browser_utils import BrowserFactory, StealthUtils, find_element_with_selectors
 
 
 def remove_source(
@@ -136,7 +125,7 @@ def remove_source(
                             source_row = el
                             source_text_found = text[:50]
                             break
-            except:
+            except Exception:
                 continue
 
         if not source_row:
@@ -206,7 +195,7 @@ def remove_source(
                             menu_button = btn
                             print(f"     Found potential menu button at ({btn_box['x']}, {btn_box['y']})")
                             break
-                except:
+                except Exception:
                     continue
 
         if not menu_button:
@@ -223,7 +212,7 @@ def remove_source(
                     print("     Context menu appeared!")
                     # Skip to the remove step
                     menu_button = "context_menu_used"
-            except:
+            except Exception:
                 pass
 
         if not menu_button:
@@ -287,7 +276,7 @@ def remove_source(
                     if el.is_visible():
                         still_exists = True
                         break
-            except:
+            except Exception:
                 continue
 
         if still_exists:
@@ -299,7 +288,6 @@ def remove_source(
 
     except Exception as e:
         print(f"   Error: {e}")
-        import traceback
         traceback.print_exc()
         return False
 
@@ -307,12 +295,12 @@ def remove_source(
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 

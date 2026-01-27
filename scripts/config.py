@@ -403,3 +403,91 @@ VIDEO_GENERATING_SELECTORS = [
     ':text("Come back in a few minutes")',
     '[aria-label="Generating"]',
 ]
+
+# Shared JavaScript for source detection from UI
+# Used by list_sources.py and source_extractor.py
+SOURCE_DETECTION_JS = """
+() => {
+    const sources = [];
+    const seenTexts = new Set();
+
+    // UI text to skip (exact matches)
+    const skipTexts = new Set(['check_box', 'more_vert', 'description', 'drive_pdf',
+                       'markdown', 'web', 'select all', 'select all sources',
+                       'sources', 'add source', 'add sources', 'video_youtube', 'link', 'pdf',
+                       'more', 'less', 'expand', 'collapse', 'chat', 'studio',
+                       'save to note', 'try deep research for an in-depth report and new sources!']);
+
+    // Helper to check if text is a valid source name
+    const isValidSource = (text) => {
+        if (!text || text.length < 3 || text.length > 150) return false;
+        if (text.includes('\\n')) return false;
+
+        // Skip UI elements (exact match, case insensitive)
+        if (skipTexts.has(text.toLowerCase())) return false;
+
+        // Skip if it starts with bullet points or looks like content
+        if (text.startsWith('•') || text.startsWith('-') || text.startsWith('*')) return false;
+        if (text.startsWith('How ') || text.startsWith('What ') || text.startsWith('Based on')) return false;
+
+        return true;
+    };
+
+    // Primary method: Find checkbox elements and extract source titles from their rows
+    const checkboxes = document.querySelectorAll('mat-checkbox, [role="checkbox"]');
+
+    for (const checkbox of checkboxes) {
+        const rect = checkbox.getBoundingClientRect();
+        // Must be in left panel (x < 450) - filters out main content
+        if (rect.x > 450 || rect.x < 0) continue;
+
+        // Get the row container (parent that contains both title and checkbox)
+        let row = checkbox.parentElement;
+        for (let i = 0; i < 4 && row; i++) {
+            const rowRect = row.getBoundingClientRect();
+            // Row should be reasonably sized (not too tall = contains multiple items)
+            if (rowRect.height > 30 && rowRect.height < 80) {
+                break;
+            }
+            row = row.parentElement;
+        }
+
+        if (!row) continue;
+
+        // Extract the title from this row
+        const textElements = row.querySelectorAll('span, div');
+        for (const el of textElements) {
+            const text = el.innerText?.trim();
+            if (!text) continue;
+
+            // Skip if too short or contains multiple lines
+            if (text.length < 3 || text.length > 150) continue;
+            if (text.includes('\\n')) continue;
+
+            // Skip icon text
+            if (skipTexts.has(text.toLowerCase())) continue;
+
+            // This is likely the source title
+            if (!seenTexts.has(text) && isValidSource(text)) {
+                seenTexts.add(text);
+                sources.push(text);
+                break;  // Found title for this row
+            }
+        }
+    }
+
+    // Fallback: If we didn't find enough, try looking for .source-title class
+    if (sources.length < 3) {
+        const titleElements = document.querySelectorAll('.source-title, .source-name, [class*="source"][class*="title"]');
+        for (const el of titleElements) {
+            const text = el.innerText?.trim();
+            if (text && isValidSource(text) && !seenTexts.has(text)) {
+                seenTexts.add(text);
+                sources.push(text);
+            }
+        }
+    }
+
+    return sources;
+}
+"""

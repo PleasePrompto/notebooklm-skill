@@ -12,6 +12,7 @@ import re
 import sys
 import json
 import subprocess
+import traceback
 from pathlib import Path
 from typing import List, Dict, Set, Optional, Tuple
 
@@ -412,7 +413,6 @@ def select_sources_in_browser(page, relevant_titles: List[str], all_titles: List
 
     except Exception as e:
         print(f"  ⚠️ Error filtering sources: {e}")
-        import traceback
         traceback.print_exc()
         return False
 

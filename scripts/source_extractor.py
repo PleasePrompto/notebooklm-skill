@@ -8,6 +8,7 @@ import argparse
 import sys
 import time
 import re
+import traceback
 from pathlib import Path
 from datetime import datetime
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
-from config import SOURCE_SUMMARY_DIR
+from config import SOURCE_SUMMARY_DIR, SOURCE_DETECTION_JS
 from browser_utils import BrowserFactory, StealthUtils
 
 
@@ -120,7 +121,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
                     print(f"  ✓ Found {len(elements)} sources using: {selector}")
                     source_elements = elements
                     break
-            except:
+            except Exception:
                 continue
 
         if not source_elements:
@@ -147,7 +148,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
                     if source_elements and len(source_elements) > 0:
                         print(f"  ✓ Found {len(source_elements)} sources using: {selector}")
                         break
-            except:
+            except Exception:
                 pass
 
         if not source_elements:
@@ -197,98 +198,9 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
 
             return []
 
-        # First, get all source titles via JavaScript
+        # First, get all source titles via shared JavaScript detection
         print("  📝 Collecting all source titles...")
-        source_titles = page.evaluate("""
-            () => {
-                const sources = [];
-                const seenTexts = new Set();
-
-                // UI text to skip (exact matches)
-                const skipTexts = new Set(['check_box', 'more_vert', 'description', 'drive_pdf',
-                                   'markdown', 'web', 'select all', 'select all sources',
-                                   'sources', 'add source', 'add sources', 'video_youtube', 'link', 'pdf',
-                                   'more', 'less', 'expand', 'collapse', 'chat', 'studio',
-                                   'save to note', 'try deep research for an in-depth report and new sources!']);
-
-                // Helper to check if text is a valid source name
-                const isValidSource = (text) => {
-                    if (!text || text.length < 3 || text.length > 150) return false;
-                    if (text.includes('\\n')) return false;
-
-                    // Skip UI elements (exact match, case insensitive)
-                    if (skipTexts.has(text.toLowerCase())) return false;
-
-                    // Skip if it starts with bullet points or looks like content
-                    if (text.startsWith('•') || text.startsWith('-') || text.startsWith('*')) return false;
-                    if (text.startsWith('How ') || text.startsWith('What ') || text.startsWith('Based on')) return false;
-
-                    return true;
-                };
-
-                // Primary method: Find the source list container first, then extract titles
-                // The source panel is typically on the left side of the page
-                // Each source row has: [icon] [title] [checkbox]
-
-                // Look for elements that have a checkbox sibling/child - these are source rows
-                const checkboxes = document.querySelectorAll('mat-checkbox, [role="checkbox"]');
-
-                for (const checkbox of checkboxes) {
-                    const rect = checkbox.getBoundingClientRect();
-                    // Must be in left panel (x < 450) - this filters out main content
-                    if (rect.x > 450 || rect.x < 0) continue;
-
-                    // Get the row container (parent that contains both title and checkbox)
-                    let row = checkbox.parentElement;
-                    for (let i = 0; i < 4 && row; i++) {
-                        const rowRect = row.getBoundingClientRect();
-                        // Row should be reasonably sized (not too tall = contains multiple items)
-                        if (rowRect.height > 30 && rowRect.height < 80) {
-                            break;
-                        }
-                        row = row.parentElement;
-                    }
-
-                    if (!row) continue;
-
-                    // Extract the title from this row
-                    // Look for span or div elements that contain the source name
-                    const textElements = row.querySelectorAll('span, div');
-                    for (const el of textElements) {
-                        const text = el.innerText?.trim();
-                        if (!text) continue;
-
-                        // Skip if it's too short or contains multiple lines
-                        if (text.length < 3 || text.length > 150) continue;
-                        if (text.includes('\\n')) continue;
-
-                        // Skip icon text
-                        if (skipTexts.has(text.toLowerCase())) continue;
-
-                        // This is likely the source title
-                        if (!seenTexts.has(text) && isValidSource(text)) {
-                            seenTexts.add(text);
-                            sources.push(text);
-                            break;  // Found title for this row
-                        }
-                    }
-                }
-
-                // Fallback: If we didn't find enough, try looking for .source-title class
-                if (sources.length < 3) {
-                    const titleElements = document.querySelectorAll('.source-title, .source-name, [class*="source"][class*="title"]');
-                    for (const el of titleElements) {
-                        const text = el.innerText?.trim();
-                        if (text && isValidSource(text) && !seenTexts.has(text)) {
-                            seenTexts.add(text);
-                            sources.push(text);
-                        }
-                    }
-                }
-
-                return sources;
-            }
-        """)
+        source_titles = page.evaluate(SOURCE_DETECTION_JS)
 
         if not source_titles:
             print("  ⚠️ Could not get source titles")
@@ -323,7 +235,7 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
                     # Try to find the source by its text
                     source_locator = page.locator(f'text="{title}"').first
                     source_locator.click(timeout=5000)
-                except:
+                except Exception:
                     # Fallback: use JavaScript
                     clicked = page.evaluate("""
                         (title) => {
@@ -448,7 +360,6 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
 
     except Exception as e:
         print(f"  ❌ Error: {e}")
-        import traceback
         traceback.print_exc()
         return []
 
@@ -457,13 +368,13 @@ def extract_sources(notebook_url: str, headless: bool = True, existing_titles: s
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
 
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 

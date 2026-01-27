@@ -13,6 +13,7 @@ import argparse
 import sys
 import time
 import re
+import traceback
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -115,7 +116,7 @@ def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
                 if query_element:
                     print(f"  ✓ Found input: {selector}")
                     break
-            except:
+            except Exception:
                 continue
 
         if not query_element:
@@ -130,7 +131,7 @@ def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
             try:
                 page.wait_for_selector('.single-source-container', timeout=5000, state="attached")
                 StealthUtils.random_delay(500, 800)  # Small extra wait for all sources
-            except:
+            except Exception:
                 print("    ⚠️ Source containers not found, skipping filter")
 
             select_sources_in_browser(page, relevant_sources, all_sources)
@@ -165,7 +166,7 @@ def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
                 if thinking_element and thinking_element.is_visible():
                     time.sleep(1)
                     continue
-            except:
+            except Exception:
                 pass
 
             # Try to find response with MCP selectors
@@ -186,7 +187,7 @@ def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
                             else:
                                 stable_count = 0
                                 last_text = text
-                except:
+                except Exception:
                     continue
 
             if answer:
@@ -204,7 +205,6 @@ def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
 
     except Exception as e:
         print(f"  ❌ Error: {e}")
-        import traceback
         traceback.print_exc()
         return None
 
@@ -213,13 +213,13 @@ def ask_notebooklm(question: str, notebook_url: str, notebook_id: str = None,
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
 
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 

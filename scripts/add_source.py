@@ -10,6 +10,7 @@ import argparse
 import sys
 import time
 import re
+import traceback
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -168,7 +169,6 @@ def add_file_source(notebook_url: str, file_path: str, headless: bool = True) ->
 
     except Exception as e:
         print(f"    Error: {e}")
-        import traceback
         traceback.print_exc()
         return None
 
@@ -176,12 +176,12 @@ def add_file_source(notebook_url: str, file_path: str, headless: bool = True) ->
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 
@@ -254,7 +254,6 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
 
     except Exception as e:
         print(f"    Error: {e}")
-        import traceback
         traceback.print_exc()
         return None
 
@@ -262,12 +261,12 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 
@@ -347,7 +346,6 @@ def add_text_source(notebook_url: str, content: str, headless: bool = True) -> s
 
     except Exception as e:
         print(f"    Error: {e}")
-        import traceback
         traceback.print_exc()
         return None
 
@@ -355,12 +353,12 @@ def add_text_source(notebook_url: str, content: str, headless: bool = True) -> s
         if context:
             try:
                 context.close()
-            except:
+            except Exception:
                 pass
         if playwright:
             try:
                 playwright.stop()
-            except:
+            except Exception:
                 pass
 
 

@@ -6,10 +6,11 @@ Handles browser launching, stealth features, and common interactions
 import json
 import time
 import random
-from typing import Optional, List
+import traceback
+from typing import Optional, List, Tuple, Any
 
 from patchright.sync_api import Playwright, BrowserContext, Page
-from config import BROWSER_PROFILE_DIR, STATE_FILE, BROWSER_ARGS, USER_AGENT
+from config import BROWSER_PROFILE_DIR, STATE_FILE, BROWSER_ARGS, USER_AGENT, get_language_display_name
 
 
 class BrowserFactory:
@@ -72,7 +73,7 @@ class StealthUtils:
             # Try waiting if not immediately found
             try:
                 element = page.wait_for_selector(selector, timeout=2000)
-            except:
+            except Exception:
                 pass
         
         if not element:
@@ -167,3 +168,166 @@ class DownloadHandler:
         except Exception as e:
             print(f"    Download failed: {e}")
             return None
+
+
+def find_element_with_selectors(page: Page, selectors: list, timeout: int = 5000) -> Tuple[Optional[Any], Optional[str]]:
+    """
+    Try multiple selectors and return first visible match.
+
+    Args:
+        page: Playwright page object
+        selectors: List of CSS selectors to try
+        timeout: Timeout in milliseconds for each selector
+
+    Returns:
+        Tuple of (element, matched_selector) or (None, None) if not found
+    """
+    for selector in selectors:
+        try:
+            element = page.wait_for_selector(selector, timeout=timeout, state="visible")
+            if element:
+                return element, selector
+        except Exception:
+            continue
+    return None, None
+
+
+def select_language(page: Page, language: str) -> bool:
+    """
+    Select a language from the NotebookLM dropdown menu.
+
+    Args:
+        page: Playwright page object
+        language: Language name in English (e.g., "Japanese") or native script (e.g., "日本語")
+
+    Returns:
+        True if language was selected, False otherwise
+    """
+    display_name = get_language_display_name(language)
+    print(f"    Selecting language: {language} → {display_name}")
+
+    try:
+        # Step 1: Find and click the language dropdown
+        dropdown_opened = False
+
+        # Try clicking on the element that shows current language selection
+        try:
+            lang_dropdown = page.locator('mat-select:has-text("English"), div[role="combobox"]:has-text("English"), div[role="listbox"]:has-text("English")').first
+            if lang_dropdown.is_visible(timeout=2000):
+                lang_dropdown.click()
+                dropdown_opened = True
+        except Exception:
+            pass
+
+        if not dropdown_opened:
+            # Try finding by structure - look for the language section
+            try:
+                lang_section = page.locator('div:has-text("Choose language")').first
+                if lang_section.is_visible(timeout=1000):
+                    dropdown = lang_section.locator('mat-select, [role="combobox"], div:has-text("English")').first
+                    if dropdown.is_visible(timeout=1000):
+                        dropdown.click()
+                        dropdown_opened = True
+            except Exception:
+                pass
+
+        if not dropdown_opened:
+            print("     Could not find language dropdown")
+            page.screenshot(path="/tmp/notebooklm_language_debug.png")
+            return False
+
+        StealthUtils.random_delay(500, 800)
+
+        # Step 2: Find and click the language option by its display name
+        try:
+            lang_option = page.locator(f'div:text-is("{display_name}"), span:text-is("{display_name}")').first
+            if lang_option.is_visible(timeout=3000):
+                lang_option.scroll_into_view_if_needed()
+                lang_option.click()
+                StealthUtils.random_delay(500, 800)
+                print(f"     Selected: {display_name}")
+                return True
+        except Exception:
+            pass
+
+        # Fallback: try get_by_text with exact match
+        try:
+            lang_option = page.get_by_text(display_name, exact=True).first
+            if lang_option.is_visible(timeout=2000):
+                lang_option.scroll_into_view_if_needed()
+                lang_option.click()
+                StealthUtils.random_delay(500, 800)
+                print(f"     Selected: {display_name}")
+                return True
+        except Exception:
+            pass
+
+        # Another fallback: use role="option" selector
+        try:
+            lang_option = page.locator(f'[role="option"]:has-text("{display_name}")').first
+            if lang_option.is_visible(timeout=2000):
+                lang_option.scroll_into_view_if_needed()
+                lang_option.click()
+                StealthUtils.random_delay(500, 800)
+                print(f"     Selected: {display_name}")
+                return True
+        except Exception:
+            pass
+
+        print(f"     Could not find language option: {display_name}")
+        page.screenshot(path="/tmp/notebooklm_language_options_debug.png")
+        page.keyboard.press("Escape")
+        return False
+
+    except Exception as e:
+        print(f"     Language selection error: {e}")
+        return False
+
+
+def get_all_sources_from_ui(page: Page) -> List[str]:
+    """
+    Get all source titles from the NotebookLM UI.
+
+    Args:
+        page: Playwright page object
+
+    Returns:
+        List of source titles
+    """
+    sources = page.evaluate("""
+        () => {
+            const sources = [];
+            const checkboxes = document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox, .mat-checkbox');
+
+            for (const checkbox of checkboxes) {
+                let parent = checkbox.parentElement;
+                for (let i = 0; i < 5 && parent; i++) {
+                    const text = parent.innerText?.trim();
+                    if (text && text.length > 5 && text.length < 300) {
+                        const lines = text.split('\\n').filter(l => l.trim());
+                        for (const line of lines) {
+                            const cleaned = line.trim();
+                            if (cleaned.length < 5) continue;
+                            if (['check_box', 'more_vert', 'description', 'drive_pdf',
+                                 'markdown', 'web', 'Select all'].some(p => cleaned.includes(p))) continue;
+
+                            const hasExtension = /\\.(pdf|md|txt|docx)$/i.test(cleaned);
+                            const isWikipedia = cleaned.includes('Wikipedia');
+                            const hasCJK = /[\\u4e00-\\u9fff]/.test(cleaned);
+                            const hasPattern = /--/.test(cleaned) || /_/.test(cleaned);
+
+                            if ((hasExtension || isWikipedia || hasCJK || hasPattern) &&
+                                !sources.includes(cleaned)) {
+                                sources.push(cleaned);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    parent = parent.parentElement;
+                }
+            }
+            return sources;
+        }
+    """)
+    return sources
