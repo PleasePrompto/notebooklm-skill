@@ -67,6 +67,7 @@ def main():
         print("  ask_question.py     - Query NotebookLM")
         print("  notebook_manager.py - Manage notebook library")
         print("  audio_generator.py  - Generate Audio Overview with custom prompts")
+        print("  video_generator.py  - Generate Video Overview with custom prompts")
         print("  add_source.py       - Add sources to notebooks")
         print("  list_sources.py     - List sources by reading UI (reliable)")
         print("  remove_source.py    - Remove source from notebook (PERMANENT)")

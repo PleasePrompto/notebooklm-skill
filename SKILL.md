@@ -180,10 +180,14 @@ python3 scripts/run.py audio_generator.py --notebook-url URL --instructions "Foc
 # Choose format and length
 python3 scripts/run.py audio_generator.py --notebook-id ID --format brief --length short
 
+# Choose a different language
+python3 scripts/run.py audio_generator.py --notebook-id ID --language "Spanish"
+
 # Full customization with output filename
 python3 scripts/run.py audio_generator.py --notebook-id ID \
   --format deep_dive \
   --length long \
+  --language "Japanese" \
   --instructions "Discuss the technical implementation details" \
   --output "my_podcast.wav"
 
@@ -204,6 +208,9 @@ python3 scripts/run.py audio_generator.py --notebook-url URL --show-browser
 - `default` - Standard length
 - `long` - Extended discussion
 
+**Language (--language):**
+Specify a language for the audio output (e.g., "English", "Spanish", "Japanese", "French", "German", etc.). Defaults to English if not specified.
+
 **Custom Instructions (--instructions):**
 Guide what the AI hosts focus on:
 - Focus on a specific source: "only cover the article about Italy"
@@ -213,7 +220,63 @@ Guide what the AI hosts focus on:
 
 **Note:** Audio generation can take 5-10 minutes. The script will show progress updates while waiting.
 
-### Step 7: Remove Source (USE WITH CAUTION)
+### Step 7: Generate Video Overview
+
+Generate video summaries of your notebook content with customizable format, visual style, and instructions:
+
+```bash
+# Basic video generation (uses default settings)
+python3 scripts/run.py video_generator.py --notebook-url "https://notebooklm.google.com/notebook/..."
+
+# With custom prompt/instructions
+python3 scripts/run.py video_generator.py --notebook-url URL --instructions "Focus on the key concepts and explain visually"
+
+# Choose format and visual style
+python3 scripts/run.py video_generator.py --notebook-id ID --format brief --style whiteboard
+
+# Choose a different language
+python3 scripts/run.py video_generator.py --notebook-id ID --language "French"
+
+# Full customization with output filename
+python3 scripts/run.py video_generator.py --notebook-id ID \
+  --format explainer \
+  --style kawaii \
+  --language "Japanese" \
+  --instructions "Present this to a book club" \
+  --output "my_video.mp4"
+
+# Show browser for debugging
+python3 scripts/run.py video_generator.py --notebook-url URL --show-browser
+```
+
+**Video Format Options:**
+| Format | Description |
+|--------|-------------|
+| `explainer` | A structured, comprehensive overview that connects the dots within your sources (default) |
+| `brief` | A bite-sized overview to help you quickly grasp core ideas |
+
+**Visual Style Options:**
+| Style | Description |
+|-------|-------------|
+| `auto` | Auto-select the best style for your content (default) |
+| `custom` | Custom visual style |
+| `classic` | Classic presentation style |
+| `whiteboard` | Whiteboard-style animations |
+| `kawaii` | Cute, friendly visual style |
+| `anime` | Anime-inspired visuals |
+
+**Language (--language):**
+Specify a language for the video output (e.g., "English", "Spanish", "Japanese", "French", "German", etc.). Defaults to English if not specified.
+
+**Custom Instructions (--instructions):**
+Guide what the AI hosts focus on:
+- Target a specific use case: "present this to a book club"
+- Focus on a specific source: "show the photos from the album"
+- Describe the show structure: "start by talking about the mission"
+
+**Note:** Video generation can take several minutes. The script will show progress updates while waiting.
+
+### Step 8: Remove Source (USE WITH CAUTION)
 
 > **WARNING:** This action is **PERMANENT** and cannot be undone. Only use when the user explicitly requests source removal.
 
@@ -363,8 +426,27 @@ python3 scripts/run.py audio_generator.py --notebook-id ID --instructions "Your 
 python3 scripts/run.py audio_generator.py --notebook-url URL \
   --format deep_dive|brief|critique|debate \
   --length short|default|long \
+  --language "English|Spanish|Japanese|..." \
   --instructions "Custom prompt" \
   --output filename.wav \
+  --show-browser
+```
+
+### Video Generation (`video_generator.py`)
+```bash
+# Generate with defaults
+python3 scripts/run.py video_generator.py --notebook-url URL
+
+# With custom prompt and style
+python3 scripts/run.py video_generator.py --notebook-id ID --instructions "Your prompt here" --style whiteboard
+
+# Full options
+python3 scripts/run.py video_generator.py --notebook-url URL \
+  --format explainer|brief \
+  --style auto|custom|classic|whiteboard|kawaii|anime \
+  --language "English|Spanish|Japanese|..." \
+  --instructions "Custom prompt" \
+  --output filename.mp4 \
   --show-browser
 ```
 
@@ -471,11 +553,12 @@ Activate notebook → python3 scripts/run.py notebook_manager.py activate --id I
 ├─────────────────────────────────────────────────────────────┤
 │ Ask question → python3 scripts/run.py ask_question.py ...   │
 │ Generate audio → python3 scripts/run.py audio_generator.py  │
+│ Generate video → python3 scripts/run.py video_generator.py  │
 └─────────────────────────────────────────────────────────────┘
     ↓
 (For questions) See "Is that ALL you need?" → Ask follow-ups until complete
     ↓
-(For audio) Wait for generation (5-10 min) → Download audio file
+(For audio/video) Wait for generation → Download media file
     ↓
 Synthesize and respond to user
 ```
@@ -508,7 +591,7 @@ Synthesize and respond to user
 - Rate limits on free Google accounts (50 queries/day)
 - Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
-- Audio generation takes 5-10 minutes (NotebookLM limitation)
+- Audio/Video generation takes several minutes (NotebookLM limitation)
 
 ## Resources (Skill Structure)
 

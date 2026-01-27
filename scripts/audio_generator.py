@@ -23,15 +23,18 @@ from config import (
     AUDIO_CUSTOMIZE_BUTTON_SELECTORS,
     AUDIO_FORMAT_SELECTORS,
     AUDIO_LENGTH_SELECTORS,
+    AUDIO_LANGUAGE_DROPDOWN_SELECTORS,
     AUDIO_INSTRUCTIONS_SELECTORS,
     AUDIO_GENERATE_BUTTON_SELECTORS,
     AUDIO_MENU_BUTTON_SELECTORS,
     AUDIO_DOWNLOAD_MENU_SELECTORS,
     AUDIO_GENERATING_SELECTORS,
     AUDIO_GENERATION_TIMEOUT,
-    PAGE_LOAD_TIMEOUT
+    PAGE_LOAD_TIMEOUT,
+    get_language_display_name
 )
 from browser_utils import BrowserFactory, StealthUtils, DownloadHandler
+from source_filter import select_sources_in_browser
 
 
 def find_element_with_selectors(page, selectors: list, timeout: int = 5000):
@@ -46,11 +49,156 @@ def find_element_with_selectors(page, selectors: list, timeout: int = 5000):
     return None, None
 
 
+def select_language(page, language: str) -> bool:
+    """
+    Select a language from the dropdown menu.
+
+    Args:
+        page: Playwright page object
+        language: Language name in English (e.g., "Japanese") or native script (e.g., "日本語")
+
+    Returns:
+        True if language was selected, False otherwise
+    """
+    # Convert English name to native script display name
+    display_name = get_language_display_name(language)
+    print(f"    Selecting language: {language} → {display_name}")
+
+    try:
+        # Step 1: Find and click the language dropdown
+        dropdown_opened = False
+
+        # Try clicking on the element that shows current language selection
+        try:
+            lang_dropdown = page.locator('mat-select:has-text("English"), div[role="combobox"]:has-text("English"), div[role="listbox"]:has-text("English")').first
+            if lang_dropdown.is_visible(timeout=2000):
+                lang_dropdown.click()
+                dropdown_opened = True
+        except:
+            pass
+
+        if not dropdown_opened:
+            # Try finding by structure - look for the language section
+            try:
+                lang_section = page.locator('div:has-text("Choose language")').first
+                if lang_section.is_visible(timeout=1000):
+                    dropdown = lang_section.locator('mat-select, [role="combobox"], div:has-text("English")').first
+                    if dropdown.is_visible(timeout=1000):
+                        dropdown.click()
+                        dropdown_opened = True
+            except:
+                pass
+
+        if not dropdown_opened:
+            print("     Could not find language dropdown")
+            page.screenshot(path="/tmp/notebooklm_language_debug.png")
+            return False
+
+        StealthUtils.random_delay(500, 800)
+
+        # Step 2: Find and click the language option by its display name (native script)
+        # Try to find and click the language option directly
+        try:
+            lang_option = page.locator(f'div:text-is("{display_name}"), span:text-is("{display_name}")').first
+            if lang_option.is_visible(timeout=3000):
+                lang_option.scroll_into_view_if_needed()
+                lang_option.click()
+                StealthUtils.random_delay(500, 800)
+                print(f"     Selected: {display_name}")
+                return True
+        except:
+            pass
+
+        # Fallback: try get_by_text with exact match
+        try:
+            lang_option = page.get_by_text(display_name, exact=True).first
+            if lang_option.is_visible(timeout=2000):
+                lang_option.scroll_into_view_if_needed()
+                lang_option.click()
+                StealthUtils.random_delay(500, 800)
+                print(f"     Selected: {display_name}")
+                return True
+        except:
+            pass
+
+        # Another fallback: use role="option" selector
+        try:
+            lang_option = page.locator(f'[role="option"]:has-text("{display_name}")').first
+            if lang_option.is_visible(timeout=2000):
+                lang_option.scroll_into_view_if_needed()
+                lang_option.click()
+                StealthUtils.random_delay(500, 800)
+                print(f"     Selected: {display_name}")
+                return True
+        except:
+            pass
+
+        print(f"     Could not find language option: {display_name}")
+        page.screenshot(path="/tmp/notebooklm_language_options_debug.png")
+        page.keyboard.press("Escape")
+        return False
+
+    except Exception as e:
+        print(f"     Language selection error: {e}")
+        return False
+
+
+def get_all_sources_from_ui(page) -> list:
+    """
+    Get all source titles from the NotebookLM UI.
+
+    Args:
+        page: Playwright page object
+
+    Returns:
+        List of source titles
+    """
+    sources = page.evaluate("""
+        () => {
+            const sources = [];
+            const checkboxes = document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox, .mat-checkbox');
+
+            for (const checkbox of checkboxes) {
+                let parent = checkbox.parentElement;
+                for (let i = 0; i < 5 && parent; i++) {
+                    const text = parent.innerText?.trim();
+                    if (text && text.length > 5 && text.length < 300) {
+                        const lines = text.split('\\n').filter(l => l.trim());
+                        for (const line of lines) {
+                            const cleaned = line.trim();
+                            if (cleaned.length < 5) continue;
+                            if (['check_box', 'more_vert', 'description', 'drive_pdf',
+                                 'markdown', 'web', 'Select all'].some(p => cleaned.includes(p))) continue;
+
+                            const hasExtension = /\\.(pdf|md|txt|docx)$/i.test(cleaned);
+                            const isWikipedia = cleaned.includes('Wikipedia');
+                            const hasCJK = /[\\u4e00-\\u9fff]/.test(cleaned);
+                            const hasPattern = /--/.test(cleaned) || /_/.test(cleaned);
+
+                            if ((hasExtension || isWikipedia || hasCJK || hasPattern) &&
+                                !sources.includes(cleaned)) {
+                                sources.push(cleaned);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    parent = parent.parentElement;
+                }
+            }
+            return sources;
+        }
+    """)
+    return sources
+
+
 def generate_audio(
     notebook_url: str,
     format: str = "deep_dive",
     length: str = "default",
+    language: str = None,
     instructions: str = None,
+    sources: list = None,
     output: str = None,
     headless: bool = True
 ) -> str:
@@ -61,7 +209,9 @@ def generate_audio(
         notebook_url: The NotebookLM notebook URL
         format: Audio format - deep_dive, brief, critique, or debate
         length: Audio length - short, default, or long
+        language: Language for the audio (e.g., "English", "Spanish", "Japanese")
         instructions: Custom instructions for AI hosts (the prompt)
+        sources: List of source names to include (deselects others). If None, uses all sources.
         output: Custom output filename
         headless: Run browser in headless mode
 
@@ -78,6 +228,14 @@ def generate_audio(
     print(f"  Notebook: {notebook_url}")
     print(f"  Format: {format}")
     print(f"  Length: {length}")
+    if language:
+        print(f"  Language: {language}")
+    if sources:
+        print(f"  Sources: {len(sources)} selected")
+        for s in sources[:3]:
+            print(f"    - {s[:50]}...")
+        if len(sources) > 3:
+            print(f"    ... and {len(sources) - 3} more")
     if instructions:
         print(f"  Instructions: {instructions[:50]}...")
 
@@ -100,6 +258,31 @@ def generate_audio(
         # Wait for notebook to load
         page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=60000)
         StealthUtils.random_delay(2000, 3000)
+
+        # Handle source selection if specified
+        if sources:
+            print("    Selecting specific sources...")
+            StealthUtils.random_delay(1000, 1500)
+
+            # Get all sources from UI
+            all_sources = get_all_sources_from_ui(page)
+            print(f"    Found {len(all_sources)} sources in notebook")
+
+            if all_sources:
+                # Find matching sources (partial match supported)
+                sources_to_keep = []
+                for source_name in sources:
+                    for ui_source in all_sources:
+                        if source_name.lower() in ui_source.lower() or ui_source.lower() in source_name.lower():
+                            sources_to_keep.append(ui_source)
+                            break
+
+                if sources_to_keep:
+                    print(f"    Keeping {len(sources_to_keep)} sources, deselecting {len(all_sources) - len(sources_to_keep)}")
+                    select_sources_in_browser(page, sources_to_keep, all_sources)
+                    StealthUtils.random_delay(500, 1000)
+                else:
+                    print("    Warning: No matching sources found, using all sources")
 
         # First, check if we need to click on "Studio" tab (responsive layout)
         studio_tab = page.query_selector('button:has-text("Studio"), [role="tab"]:has-text("Studio")')
@@ -145,14 +328,46 @@ def generate_audio(
         StealthUtils.random_delay(1000, 2000)
 
         # Select format if specified
-        if format and format in AUDIO_FORMAT_SELECTORS:
+        if format:
             print(f"    Selecting format: {format}")
-            format_selectors = AUDIO_FORMAT_SELECTORS[format]
-            format_element, fmt_selector = find_element_with_selectors(page, format_selectors, timeout=3000)
-            if format_element:
-                format_element.click()
+            format_names = {
+                'deep_dive': 'Deep Dive',
+                'brief': 'Brief',
+                'critique': 'Critique',
+                'debate': 'Debate'
+            }
+            format_name = format_names.get(format, format)
+
+            # Try using Playwright's text locator first
+            format_selected = False
+            try:
+                # Look for a div that starts with the format name (the card)
+                format_card = page.locator(f'div:has(div:text-is("{format_name}"))').first
+                if format_card.is_visible(timeout=2000):
+                    format_card.click()
+                    format_selected = True
+            except:
+                pass
+
+            if not format_selected:
+                # Fallback: use getByText
+                try:
+                    format_el = page.get_by_text(format_name, exact=True).first
+                    if format_el.is_visible(timeout=2000):
+                        # Click the parent card
+                        format_el.locator('..').locator('..').click()
+                        format_selected = True
+                except:
+                    pass
+
+            if format_selected:
                 StealthUtils.random_delay(500, 800)
-                print(f"     Selected: {fmt_selector}")
+                print(f"     Selected: {format_name}")
+            else:
+                print(f"     Warning: Could not find format card for {format_name}")
+                # Take a screenshot for debugging
+                page.screenshot(path="/tmp/notebooklm_format_debug.png")
+                print(f"     Debug screenshot: /tmp/notebooklm_format_debug.png")
 
         # Select length if specified
         if length and length in AUDIO_LENGTH_SELECTORS:
@@ -164,23 +379,38 @@ def generate_audio(
                 StealthUtils.random_delay(500, 800)
                 print(f"     Selected: {len_selector}")
 
+        # Select language if specified
+        if language:
+            select_language(page, language)
+
         # Add custom instructions if provided
         if instructions:
             print("    Adding custom instructions...")
-            instructions_input, instr_selector = find_element_with_selectors(
-                page, AUDIO_INSTRUCTIONS_SELECTORS, timeout=3000
-            )
-            if instructions_input:
-                instructions_input.click()
-                StealthUtils.random_delay(200, 400)
-                # Clear existing content and type new instructions
-                instructions_input.fill("")
-                StealthUtils.random_delay(100, 200)
-                instructions_input.fill(instructions)
-                StealthUtils.random_delay(500, 800)
-                print("     Instructions added")
-            else:
-                print("     Could not find instructions field")
+            # Re-find the instructions input (DOM may have changed after format/language selection)
+            try:
+                # Try using Playwright's locator for textarea
+                textarea = page.locator('textarea').first
+                if textarea.is_visible(timeout=3000):
+                    textarea.click()
+                    StealthUtils.random_delay(200, 400)
+                    textarea.fill(instructions)
+                    StealthUtils.random_delay(500, 800)
+                    print("     Instructions added")
+                else:
+                    raise Exception("Textarea not visible")
+            except Exception as e:
+                # Fallback to selector-based approach
+                instructions_input, instr_selector = find_element_with_selectors(
+                    page, AUDIO_INSTRUCTIONS_SELECTORS, timeout=3000
+                )
+                if instructions_input:
+                    instructions_input.click()
+                    StealthUtils.random_delay(200, 400)
+                    instructions_input.fill(instructions)
+                    StealthUtils.random_delay(500, 800)
+                    print("     Instructions added")
+                else:
+                    print(f"     Could not find instructions field: {e}")
 
         # Click Generate button
         print("    Looking for Generate button...")
@@ -294,113 +524,140 @@ def generate_audio(
         # Find and click the three-dot menu on the most recently generated audio
         print("    Looking for audio menu...")
 
-        menu_button = None
+        # The generated audio items are in the Studio panel (right side)
+        # Each item has: icon, title/metadata, play button (optional), three-dot menu button
+        # We need to find the most recent one (usually shows "Xm ago" or "just now")
 
-        # First scroll down a bit to ensure audio items are in view
-        page.evaluate('window.scrollBy(0, 300)')
-        StealthUtils.random_delay(500, 800)
+        # Use JavaScript to find the correct menu button
+        menu_clicked = page.evaluate("""
+            () => {
+                // Find the Studio panel - it's on the right side of the page
+                const studioPanelSelectors = [
+                    '[class*="studio"]',
+                    '[aria-label*="Studio"]',
+                    'div:has(> div:has-text("Audio"))'
+                ];
 
-        # Look for audio items by their characteristics
-        audio_row_selectors = [
-            'div:has-text("Deep Dive") button[aria-label*="options"]',
-            'div:has-text("Brief") button[aria-label*="options"]',
-            'div:has-text("sources") button[aria-label*="options"]',
-            'button[aria-label="More options"]',
-            'button[aria-label="Options"]',
-        ]
+                // Find all audio/video items - they typically have an icon and metadata like "X source · Xm ago"
+                const items = document.querySelectorAll('div');
+                let targetButton = null;
+                let mostRecent = null;
 
-        for selector in audio_row_selectors:
-            try:
-                menu_buttons = page.query_selector_all(selector)
-                if menu_buttons and len(menu_buttons) > 0:
-                    menu_button = menu_buttons[0]
-                    print(f"     Found {len(menu_buttons)} menu button(s) with: {selector}")
-                    break
-            except:
-                continue
+                for (const item of items) {
+                    const text = item.textContent || '';
+                    // Look for items that look like generated audio (have source count and time)
+                    if ((text.includes('source') && (text.includes('ago') || text.includes('just now'))) ||
+                        (text.includes('Deep Dive') && text.includes('source')) ||
+                        (text.includes('Brief') && text.includes('source'))) {
 
-        if not menu_button:
-            # Fallback: look for any button with options aria-label
-            all_buttons = page.query_selector_all('button')
-            for btn in all_buttons:
-                try:
-                    aria_label = btn.get_attribute('aria-label') or ''
-                    if 'option' in aria_label.lower() or 'more' in aria_label.lower():
-                        parent = btn.evaluate('el => el.closest("div")?.textContent || ""')
-                        if 'sources' in parent.lower() or 'dive' in parent.lower() or 'brief' in parent.lower():
-                            menu_button = btn
-                            print(f"     Found menu button via fallback: {aria_label}")
-                            break
-                except:
-                    continue
+                        // Check if this item is in the right part of the page (Studio panel)
+                        const rect = item.getBoundingClientRect();
+                        if (rect.x < 600) continue; // Studio panel is on the right
 
-        if not menu_button:
+                        // Find the three-dot menu button within this item
+                        const menuButtons = item.querySelectorAll('button');
+                        for (const btn of menuButtons) {
+                            const btnRect = btn.getBoundingClientRect();
+                            // Menu button is typically small and on the right side of the item
+                            if (btnRect.width < 50 && btnRect.height < 50) {
+                                const ariaLabel = btn.getAttribute('aria-label') || '';
+                                const innerHTML = btn.innerHTML || '';
+                                if (ariaLabel.includes('option') || ariaLabel.includes('more') ||
+                                    innerHTML.includes('more_vert') || innerHTML.includes('⋮')) {
+                                    targetButton = btn;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetButton) {
+                            // Check if this is more recent than previous finds
+                            if (text.includes('just now') || text.includes('1m ago') || text.includes('2m ago')) {
+                                mostRecent = targetButton;
+                                break; // Found a very recent one
+                            }
+                            if (!mostRecent) mostRecent = targetButton;
+                        }
+                    }
+                }
+
+                if (mostRecent) {
+                    mostRecent.click();
+                    return true;
+                }
+
+                // Fallback: find any menu button in the Studio area
+                const allButtons = document.querySelectorAll('button');
+                for (const btn of allButtons) {
+                    const rect = btn.getBoundingClientRect();
+                    if (rect.x < 600) continue; // Must be in right panel
+
+                    const ariaLabel = btn.getAttribute('aria-label') || '';
+                    if (ariaLabel.toLowerCase().includes('option') || ariaLabel.toLowerCase().includes('more')) {
+                        btn.click();
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        """)
+
+        if not menu_clicked:
             print("     Could not find audio menu button")
             page.screenshot(path="/tmp/notebooklm_menu_debug.png")
             print("     Debug screenshot saved to /tmp/notebooklm_menu_debug.png")
             return None
 
-        # Scroll element into view and wait
-        menu_button.scroll_into_view_if_needed()
-        StealthUtils.random_delay(500, 800)
-
-        try:
-            menu_button.click(timeout=5000)
-        except Exception as click_error:
-            print(f"     Normal click failed: {click_error}")
-            try:
-                page.evaluate('(el) => el.click()', menu_button)
-                print("     Used JavaScript click fallback")
-            except Exception as js_error:
-                print(f"     JavaScript click also failed: {js_error}")
-                page.screenshot(path="/tmp/notebooklm_menu_debug.png")
-                return None
-
-        # Wait for menu dropdown to appear
+        print("     Clicked menu button")
         StealthUtils.random_delay(1000, 1500)
 
-        # Click Download option
+        # Click Download option from the menu
         print("    Looking for Download option...")
 
-        download_option = None
-        dl_selector = None
+        # Wait for download - set up expectation before clicking
+        print("    Waiting for download...")
 
-        for selector in AUDIO_DOWNLOAD_MENU_SELECTORS:
-            try:
-                download_option = page.wait_for_selector(selector, timeout=2000, state="visible")
-                if download_option:
-                    dl_selector = selector
-                    break
-            except:
-                continue
+        try:
+            with page.expect_download(timeout=60000) as download_info:
+                # Click Download in the menu
+                download_clicked = page.evaluate("""
+                    () => {
+                        const menuItems = document.querySelectorAll('[role="menuitem"], li, button, span');
+                        for (const item of menuItems) {
+                            const text = item.textContent?.trim() || '';
+                            if (text === 'Download') {
+                                const rect = item.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    item.click();
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                """)
 
-        if not download_option:
+                if not download_clicked:
+                    raise Exception("Could not find Download option")
+
+            download = download_info.value
+            suggested_name = download.suggested_filename
+            print(f"     Download started: {suggested_name}")
+
+            if output:
+                download_path = f"{download_dir}/{output}"
+            else:
+                download_path = f"{download_dir}/{suggested_name}"
+
+            download.save_as(download_path)
+            print(f"     Saved to: {download_path}")
+
+        except Exception as dl_error:
+            print(f"     Download error: {dl_error}")
             page.screenshot(path="/tmp/notebooklm_download_menu_debug.png")
-            print("     Could not find Download option")
             print("     Debug screenshot saved to /tmp/notebooklm_download_menu_debug.png")
-            return None
-
-        print(f"     Found: {dl_selector}")
-
-        # Handle download
-        def trigger_download():
-            download_option.click()
-
-        if output:
-            download_path = DownloadHandler.download_with_custom_name(
-                page,
-                trigger_download,
-                download_dir,
-                output,
-                timeout=60000
-            )
-        else:
-            download_path = DownloadHandler.wait_for_download(
-                page,
-                trigger_download,
-                download_dir,
-                timeout=60000
-            )
+            download_path = None
 
         if download_path:
             print(f"   Audio downloaded successfully: {download_path}")
@@ -432,7 +689,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate NotebookLM Audio Overview')
 
     # Notebook selection (mutually exclusive)
-    notebook_group = parser.add_mutually_exclusive_group(required=True)
+    notebook_group = parser.add_mutually_exclusive_group()
     notebook_group.add_argument('--notebook-url', help='NotebookLM notebook URL')
     notebook_group.add_argument('--notebook-id', help='Notebook ID from library')
 
@@ -441,28 +698,50 @@ def main():
                         default='deep_dive', help='Audio format (default: deep_dive)')
     parser.add_argument('--length', choices=['short', 'default', 'long'],
                         default='default', help='Audio length (default: default)')
+    parser.add_argument('--language', help='Language for the audio (e.g., English, Spanish, Japanese)')
     parser.add_argument('--instructions', help='Custom instructions/prompt for AI hosts')
+    parser.add_argument('--sources', help='Comma-separated list of source names to include (deselects others)')
     parser.add_argument('--output', help='Custom output filename')
     parser.add_argument('--show-browser', action='store_true', help='Show browser window')
 
     args = parser.parse_args()
 
     # Resolve notebook URL
+    library = NotebookLibrary()
+
     if args.notebook_id:
-        library = NotebookLibrary()
         notebook = library.get_notebook(args.notebook_id)
         if not notebook:
             print(f"Notebook not found: {args.notebook_id}")
             return 1
         notebook_url = notebook['url']
-    else:
+        notebook_name = notebook['name']
+    elif args.notebook_url:
         notebook_url = args.notebook_url
+        notebook_name = "Unknown"
+    else:
+        # Use active notebook
+        active = library.get_active_notebook()
+        if active:
+            notebook_url = active['url']
+            notebook_name = active['name']
+            print(f"Using active notebook: {notebook_name}")
+        else:
+            print("No notebook specified and no active notebook set")
+            return 1
+
+    # Parse sources if provided
+    sources_list = None
+    if args.sources:
+        sources_list = [s.strip() for s in args.sources.split(',')]
 
     result = generate_audio(
         notebook_url=notebook_url,
         format=args.format,
         length=args.length,
+        language=args.language,
         instructions=args.instructions,
+        sources=sources_list,
         output=args.output,
         headless=not args.show_browser
     )
@@ -474,6 +753,8 @@ def main():
         print(f"File: {result}")
         print(f"Format: {args.format}")
         print(f"Length: {args.length}")
+        if args.language:
+            print(f"Language: {args.language}")
         if args.instructions:
             print(f"Instructions: {args.instructions[:50]}...")
         print("=" * 60)

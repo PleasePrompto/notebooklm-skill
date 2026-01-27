@@ -124,19 +124,23 @@ AUDIO_CUSTOMIZE_BUTTON_SELECTORS = [
 
 AUDIO_FORMAT_SELECTORS = {
     'deep_dive': [
-        'div:has-text("Deep Dive")',
+        'div:has(> div:text-is("Deep Dive"))',
+        'div.format-card:has-text("Deep Dive")',
         '[data-format="deep_dive"]',
     ],
     'brief': [
-        'div:has-text("Brief")',
+        'div:has(> div:text-is("Brief"))',
+        'div.format-card:has-text("Brief")',
         '[data-format="brief"]',
     ],
     'critique': [
-        'div:has-text("Critique")',
+        'div:has(> div:text-is("Critique"))',
+        'div.format-card:has-text("Critique")',
         '[data-format="critique"]',
     ],
     'debate': [
-        'div:has-text("Debate")',
+        'div:has(> div:text-is("Debate"))',
+        'div.format-card:has-text("Debate")',
         '[data-format="debate"]',
     ],
 }
@@ -162,6 +166,97 @@ AUDIO_INSTRUCTIONS_SELECTORS = [
     '[aria-label*="What should the AI hosts focus on"]',
     'textarea',
 ]
+
+AUDIO_LANGUAGE_DROPDOWN_SELECTORS = [
+    'div:has-text("Choose language") + div',
+    '[aria-label*="language"]',
+    '[aria-haspopup="listbox"]',
+    'mat-select',
+    '.language-select',
+]
+
+# Language name mapping: English name -> NotebookLM display name (native script)
+# Based on NotebookLM's language dropdown options
+LANGUAGE_MAP = {
+    # East Asian
+    'japanese': '日本語',
+    'chinese': '中文（简体）',
+    'simplified chinese': '中文（简体）',
+    'traditional chinese': '中文（繁體）',
+    'korean': '한국어',
+
+    # European - Latin script
+    'english': 'English',
+    'spanish': 'español',
+    'french': 'français',
+    'german': 'Deutsch',
+    'italian': 'italiano',
+    'portuguese': 'português',
+    'dutch': 'Nederlands',
+    'polish': 'polski',
+    'swedish': 'svenska',
+    'danish': 'dansk',
+    'norwegian': 'norsk',
+    'finnish': 'suomi',
+    'czech': 'čeština',
+    'romanian': 'română',
+    'hungarian': 'magyar',
+    'turkish': 'Türkçe',
+    'indonesian': 'Indonesia',
+    'vietnamese': 'Tiếng Việt',
+    'malay': 'Melayu',
+    'tagalog': 'Tagalog',
+    'estonian': 'eesti',
+    'latvian': 'latviešu',
+    'lithuanian': 'lietuvių',
+    'slovenian': 'slovenščina',
+    'croatian': 'hrvatski',
+    'slovak': 'slovenčina',
+    'catalan': 'català',
+    'haitian creole': 'créole haïtien',
+
+    # Cyrillic
+    'russian': 'русский',
+    'ukrainian': 'українська',
+    'bulgarian': 'български',
+
+    # Other scripts
+    'arabic': 'العربية',
+    'hebrew': 'עברית',
+    'hindi': 'हिन्दी',
+    'thai': 'ไทย',
+    'greek': 'Ελληνικά',
+    'bengali': 'বাংলা',
+    'tamil': 'தமிழ்',
+    'telugu': 'తెలుగు',
+    'marathi': 'मराठी',
+    'gujarati': 'ગુજરાતી',
+    'kannada': 'ಕನ್ನಡ',
+    'malayalam': 'മലയാളം',
+    'punjabi': 'ਪੰਜਾਬੀ',
+    'urdu': 'اردو',
+    'persian': 'فارسی',
+    'farsi': 'فارسی',
+    'swahili': 'Kiswahili',
+    'afrikaans': 'Afrikaans',
+}
+
+def get_language_display_name(language: str) -> str:
+    """
+    Get the NotebookLM display name for a language.
+
+    Args:
+        language: Language name in English (case-insensitive) or native script
+
+    Returns:
+        The display name used in NotebookLM's dropdown
+    """
+    # Check if it's already a native script name (pass through)
+    if language in LANGUAGE_MAP.values():
+        return language
+
+    # Look up by English name (case-insensitive)
+    return LANGUAGE_MAP.get(language.lower(), language)
 
 AUDIO_GENERATE_BUTTON_SELECTORS = [
     'button:has-text("Generate")',
@@ -215,4 +310,96 @@ SOURCE_CONFIRM_REMOVE_SELECTORS = [
     'button:has-text("Delete")',
     'button:has-text("Confirm")',
     '[data-action="confirm-remove"]',
+]
+
+# Video Overview Selectors
+VIDEO_GENERATION_TIMEOUT = 900000  # 15 minutes for video generation
+
+VIDEO_OVERVIEW_CARD_SELECTORS = [
+    'div:has-text("Video Overview")',
+    '[aria-label="Video Overview"]',
+]
+
+VIDEO_CUSTOMIZE_BUTTON_SELECTORS = [
+    'button[aria-label="Customize Video Overview"]',
+    'div:has-text("Video Overview") button',
+]
+
+VIDEO_FORMAT_SELECTORS = {
+    'explainer': [
+        'div:has-text("Explainer")',
+        '[data-format="explainer"]',
+    ],
+    'brief': [
+        'div:has-text("Brief")',
+        '[data-format="brief"]',
+    ],
+}
+
+VIDEO_STYLE_SELECTORS = {
+    'auto': [
+        'div:has-text("Auto-select")',
+        '[data-style="auto"]',
+    ],
+    'custom': [
+        'div:has-text("Custom")',
+        '[data-style="custom"]',
+    ],
+    'classic': [
+        'div:has-text("Classic")',
+        '[data-style="classic"]',
+    ],
+    'whiteboard': [
+        'div:has-text("Whiteboard")',
+        '[data-style="whiteboard"]',
+    ],
+    'kawaii': [
+        'div:has-text("Kawaii")',
+        '[data-style="kawaii"]',
+    ],
+    'anime': [
+        'div:has-text("Anime")',
+        '[data-style="anime"]',
+    ],
+}
+
+VIDEO_LANGUAGE_DROPDOWN_SELECTORS = [
+    'div:has-text("Choose language") + div',
+    '[aria-label*="language"]',
+    '[aria-haspopup="listbox"]',
+    'mat-select',
+    '.language-select',
+]
+
+VIDEO_INSTRUCTIONS_SELECTORS = [
+    'textarea[placeholder*="Things to try"]',
+    'textarea[placeholder*="focus"]',
+    '[aria-label*="What should the AI hosts focus on"]',
+    'textarea',
+]
+
+VIDEO_GENERATE_BUTTON_SELECTORS = [
+    'button:has-text("Generate")',
+    '[aria-label="Generate"]',
+    'button.generate-button',
+]
+
+VIDEO_MENU_BUTTON_SELECTORS = [
+    'button[aria-label="More options"]',
+    'button[aria-label="Options"]',
+    'button:has([data-icon="more_vert"])',
+]
+
+VIDEO_DOWNLOAD_MENU_SELECTORS = [
+    '[role="menuitem"]:has-text("Download")',
+    'li:has-text("Download")',
+    'button:has-text("Download")',
+    'div:has-text("Download")',
+]
+
+VIDEO_GENERATING_SELECTORS = [
+    'div:has-text("Generating Video Overview")',
+    ':text("Generating Video Overview")',
+    ':text("Come back in a few minutes")',
+    '[aria-label="Generating"]',
 ]
