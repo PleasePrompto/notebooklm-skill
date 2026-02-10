@@ -107,6 +107,22 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
 
+        # Snapshot existing response texts BEFORE submitting
+        pre_texts = set()
+        response_selector = None
+        for selector in RESPONSE_SELECTORS:
+            try:
+                existing = page.query_selector_all(selector)
+                if existing:
+                    response_selector = selector
+                    for el in existing:
+                        t = el.inner_text().strip()[:200]
+                        if t:
+                            pre_texts.add(t)
+                    break
+            except:
+                continue
+
         # Submit
         print("  📤 Submitting...")
         page.keyboard.press("Enter")
@@ -114,7 +130,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Small pause
         StealthUtils.random_delay(500, 1500)
 
-        # Wait for response (MCP approach: poll for stable text)
+        # Wait for response (poll for a NEW element not in pre_texts)
         print("  ⏳ Waiting for answer...")
 
         answer = None
@@ -132,16 +148,14 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             except:
                 pass
 
-            # Try to find response with MCP selectors
-            for selector in RESPONSE_SELECTORS:
+            # Try to find a NEW response element (text not seen before)
+            for selector in (([response_selector] if response_selector else []) + list(RESPONSE_SELECTORS)):
                 try:
                     elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
-
-                        if text:
+                    for el in elements:
+                        text = el.inner_text().strip()
+                        if text and text[:200] not in pre_texts:
+                            # Found a new response
                             if text == last_text:
                                 stable_count += 1
                                 if stable_count >= 3:  # Stable for 3 polls
