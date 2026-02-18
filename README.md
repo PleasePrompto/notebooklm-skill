@@ -403,6 +403,18 @@ git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 
 ---
 
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Browser doesn't open | Ensure Chrome/Chromium is installed and `BROWSER_PATH` is set if non-standard |
+| Auth fails repeatedly | Delete `~/.claude/skills/notebooklm/.browser_data` and re-authenticate |
+| "Skill not found" | Verify the clone is at `~/.claude/skills/notebooklm/` (not nested) |
+| Timeout on queries | Increase timeout in config; long documents may need 120s+ |
+| Running in web UI | This skill requires **local** Claude Code — web UI sandboxes block browser automation |
+
+---
+
 <div align="center">
 
 Built as a Claude Code Skill adaptation of my [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
