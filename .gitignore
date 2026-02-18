@@ -25,6 +25,7 @@ scripts/*.pyc
 # Environment
 .env
 *.env
+!.env.example
 .env.*
 
 # Browser/Auth state (if accidentally placed outside data/)
