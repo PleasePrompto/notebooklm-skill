@@ -42,6 +42,7 @@ class CleanupManager:
         paths = {
             'browser_state': [],
             'sessions': [],
+            'session_runtime': [],
             'library': [],
             'auth': [],
             'other': []
@@ -73,6 +74,16 @@ class CleanupManager:
                 })
                 total_size += size
 
+            session_runtime_dir = self.data_dir / "session_runtime"
+            if session_runtime_dir.exists():
+                size = self._get_size(session_runtime_dir)
+                paths['session_runtime'].append({
+                    'path': str(session_runtime_dir),
+                    'size': size,
+                    'type': 'dir'
+                })
+                total_size += size
+
             # Library (unless preserved)
             if not preserve_library:
                 library_file = self.data_dir / "library.json"
@@ -98,7 +109,7 @@ class CleanupManager:
 
             # Other files in data dir (but NEVER .venv!)
             for item in self.data_dir.iterdir():
-                if item.name not in ['browser_state', 'sessions.json', 'library.json', 'auth_info.json']:
+                if item.name not in ['browser_state', 'sessions.json', 'session_runtime', 'library.json', 'auth_info.json']:
                     size = self._get_size(item)
                     paths['other'].append({
                         'path': str(item),

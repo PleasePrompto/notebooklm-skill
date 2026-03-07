@@ -152,7 +152,7 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 |---------|------------|------------|
 | **Protocol** | Claude Skills | Model Context Protocol |
 | **Installation** | Clone to `~/.claude/skills` | `claude mcp add ...` |
-| **Sessions** | Fresh browser each question | Persistent chat sessions |
+| **Sessions** | Supports both fresh-per-question mode and optional persistent daemon-backed sessions | Persistent chat sessions |
 | **Compatibility** | Claude Code only (local) | Claude Code, Codex, Cursor, etc. |
 | **Language** | Python | TypeScript |
 | **Distribution** | Git clone | npm package |
@@ -163,11 +163,12 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 ~/.claude/skills/notebooklm/
 ├── SKILL.md              # Instructions for Claude
 ├── scripts/              # Python automation scripts
-│   ├── ask_question.py   # Query NotebookLM
+│   ├── ask_question.py   # Query NotebookLM (stateless or session shortcut)
+│   ├── session_manager.py # Persistent session daemon + client commands
 │   ├── notebook_manager.py # Library management
 │   └── auth_manager.py   # Google authentication
 ├── .venv/                # Isolated Python environment (auto-created)
-└── data/                 # Local notebook library
+└── data/                 # Local notebook library + session metadata
 ```
 
 When you mention NotebookLM or send a notebook URL, Claude:
@@ -266,6 +267,8 @@ All data is stored locally within the skill directory:
 ~/.claude/skills/notebooklm/data/
 ├── library.json       - Your notebook library with metadata
 ├── auth_info.json     - Authentication status info
+├── sessions.json      - Serializable persistent-session metadata
+├── session_runtime/   - Local daemon socket / pid files
 └── browser_state/     - Browser cookies and session data
 ```
 
@@ -276,19 +279,33 @@ All data is stored locally within the skill directory:
 
 ### Session Model
 
-Unlike the MCP server, this skill uses a **stateless model**:
+This skill now supports **two modes**:
+
+**1. Stateless mode (`ask_question.py`, default)**
 - Each question opens a fresh browser
 - Asks the question, gets the answer
 - Adds a follow-up prompt to encourage Claude to ask more questions
 - Closes the browser immediately
 
-This means:
-- No persistent chat context
-- Each question is independent
-- But your notebook library persists
-- **Follow-up mechanism**: Each answer includes "Is that ALL you need to know?" to prompt Claude to ask comprehensive follow-ups
+**2. Persistent mode (`session_manager.py`)**
+- A background daemon keeps one Playwright browser context alive
+- Each `session_id` maps to one reusable NotebookLM page/tab
+- Multiple CLI calls can continue the same NotebookLM conversation
+- Session metadata is persisted to `data/sessions.json`
+- Idle sessions are reclaimed automatically after the timeout window
 
-For multi-step research, Claude automatically asks follow-up questions when needed.
+Example persistent flow:
+
+```bash
+python scripts/run.py session_manager.py create --notebook-url "https://notebooklm.google.com/notebook/..."
+python scripts/run.py session_manager.py ask --session-id session-xxxxxxxxxxxx --question "First question"
+python scripts/run.py session_manager.py ask --session-id session-xxxxxxxxxxxx --question "Follow-up question"
+python scripts/run.py session_manager.py info --session-id session-xxxxxxxxxxxx
+python scripts/run.py session_manager.py reset --session-id session-xxxxxxxxxxxx
+python scripts/run.py session_manager.py close --session-id session-xxxxxxxxxxxx
+```
+
+`ask_question.py` remains backward-compatible. If you pass `--session-id`, it forwards the question to the persistent session manager instead of opening a fresh browser.
 
 ---
 
@@ -296,8 +313,8 @@ For multi-step research, Claude automatically asks follow-up questions when need
 
 ### Skill-Specific
 - **Local Claude Code only** - Does not work in web UI (sandbox restrictions)
-- **No session persistence** - Each question is independent
-- **No follow-up context** - Can't reference "the previous answer"
+- **Persistent sessions are process-bound** - If the background daemon exits, live Playwright objects cannot be resurrected automatically
+- **Stateless mode is still independent** - Fresh-browser questions still do not share follow-up context unless you explicitly use `session_manager.py`
 
 ### NotebookLM
 - **Rate limits** - Free tier has daily query limits

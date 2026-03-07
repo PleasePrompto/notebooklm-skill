@@ -24,8 +24,16 @@ from patchright.sync_api import sync_playwright, BrowserContext
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
+from config import (
+    AUTH_INFO_FILE,
+    BROWSER_STATE_DIR,
+    DATA_DIR,
+    NOTEBOOKLM_BASE_URL,
+    NOTEBOOKLM_URL_REGEX,
+    STATE_FILE,
+)
 from browser_utils import BrowserFactory
+from notebook_navigation import list_account_choices, open_home_page
 
 
 class AuthManager:
@@ -83,6 +91,46 @@ class AuthManager:
 
         return info
 
+    def _has_google_session(self, context: BrowserContext) -> bool:
+        """Check whether the browser context can access real NotebookLM UI without any Google sign-in challenge."""
+        page = context.new_page()
+        try:
+            preferred_email = self.get_auth_info().get('google_account_email')
+            result = open_home_page(page, preferred_email=preferred_email)
+            return result.get('status') == 'ok'
+        finally:
+            try:
+                page.close()
+            except Exception:
+                pass
+
+    def _detect_google_account_email(self, context: BrowserContext) -> Optional[str]:
+        """Best-effort detection of the current Google account email."""
+        page = context.new_page()
+        try:
+            page.goto(
+                "https://accounts.google.com/AccountChooser?continue=https://myaccount.google.com/",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+
+            emails = list_account_choices(page)
+            if len(emails) == 1:
+                return emails[0]
+
+            body_text = page.locator("body").inner_text(timeout=3000)
+            match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", body_text)
+            if match:
+                return match.group(0)
+            return None
+        except Exception:
+            return None
+        finally:
+            try:
+                page.close()
+            except Exception:
+                pass
+
     def setup_auth(self, headless: bool = False, timeout_minutes: int = 10) -> bool:
         """
         Perform interactive authentication setup
@@ -109,31 +157,32 @@ class AuthManager:
                 headless=headless
             )
 
-            # Navigate to NotebookLM
-            page = context.new_page()
-            page.goto("https://notebooklm.google.com", wait_until="domcontentloaded")
-
-            # Check if already authenticated
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
-                print("  ✅ Already authenticated!")
+            if self._has_google_session(context):
+                print("  ✅ Google account session detected")
                 self._save_browser_state(context)
+                self._save_auth_info(self._detect_google_account_email(context))
                 return True
+
+            # Navigate to NotebookLM / Google login
+            page = context.new_page()
+            page.goto(NOTEBOOKLM_BASE_URL, wait_until="domcontentloaded")
 
             # Wait for manual login
             print("\n  ⏳ Please log in to your Google account...")
             print(f"  ⏱️  Waiting up to {timeout_minutes} minutes for login...")
 
             try:
-                # Wait for URL to change to NotebookLM (regex ensures it's the actual domain, not a parameter)
-                timeout_ms = int(timeout_minutes * 60 * 1000)
-                page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=timeout_ms)
+                deadline = time.time() + timeout_minutes * 60
+                while time.time() < deadline:
+                    if self._has_google_session(context):
+                        print("  ✅ Login successful!")
+                        self._save_browser_state(context)
+                        self._save_auth_info(self._detect_google_account_email(context))
+                        return True
+                    time.sleep(2)
 
-                print(f"  ✅ Login successful!")
-
-                # Save authentication state
-                self._save_browser_state(context)
-                self._save_auth_info()
-                return True
+                print("  ❌ Authentication timeout: Google account session not detected")
+                return False
 
             except Exception as e:
                 print(f"  ❌ Authentication timeout: {e}")
@@ -167,13 +216,15 @@ class AuthManager:
             print(f"  ❌ Failed to save browser state: {e}")
             raise
 
-    def _save_auth_info(self):
+    def _save_auth_info(self, google_account_email: Optional[str] = None):
         """Save authentication metadata"""
         try:
             info = {
                 'authenticated_at': time.time(),
                 'authenticated_at_iso': time.strftime('%Y-%m-%d %H:%M:%S')
             }
+            if google_account_email:
+                info['google_account_email'] = google_account_email
             with open(self.auth_info_file, 'w') as f:
                 json.dump(info, f, indent=2)
         except Exception:
@@ -255,17 +306,15 @@ class AuthManager:
                 headless=True
             )
 
-            # Try to access NotebookLM
-            page = context.new_page()
-            page.goto("https://notebooklm.google.com", wait_until="domcontentloaded", timeout=30000)
-
-            # Check if we can access NotebookLM
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
+            if self._has_google_session(context):
                 print("  ✅ Authentication is valid")
+                auth_info = self.get_auth_info()
+                if not auth_info.get('google_account_email'):
+                    self._save_auth_info(self._detect_google_account_email(context))
                 return True
-            else:
-                print("  ❌ Authentication is invalid (redirected to login)")
-                return False
+
+            print("  ❌ Authentication is invalid (Google session not detected)")
+            return False
 
         except Exception as e:
             print(f"  ❌ Validation failed: {e}")
@@ -330,6 +379,8 @@ def main():
             print(f"  State age: {info['state_age_hours']:.1f} hours")
         if info.get('authenticated_at_iso'):
             print(f"  Last auth: {info['authenticated_at_iso']}")
+        if info.get('google_account_email'):
+            print(f"  Google account: {info['google_account_email']}")
         print(f"  State file: {info['state_file']}")
 
     elif args.command == 'validate':

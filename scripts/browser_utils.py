@@ -4,42 +4,115 @@ Handles browser launching, stealth features, and common interactions
 """
 
 import json
-import time
+import os
 import random
-from typing import Optional, List
+import shutil
+import tempfile
+import time
+from typing import List, Optional
+from urllib.parse import urlparse
 
-from patchright.sync_api import Playwright, BrowserContext, Page
-from config import BROWSER_PROFILE_DIR, STATE_FILE, BROWSER_ARGS, USER_AGENT
+from patchright.sync_api import BrowserContext, Page, Playwright
+
+from config import (
+    BROWSER_ARGS,
+    BROWSER_PROFILE_DIR,
+    NOTEBOOKLM_PROXY_BYPASS_ENV,
+    NOTEBOOKLM_PROXY_URL_ENV,
+    STATE_FILE,
+    USER_AGENT,
+)
 
 
 class BrowserFactory:
     """Factory for creating configured browser contexts"""
 
     @staticmethod
+    def _get_proxy_settings() -> tuple[Optional[dict], List[str]]:
+        """Build Playwright proxy settings and Chrome args from environment."""
+        proxy_url = (
+            os.getenv(NOTEBOOKLM_PROXY_URL_ENV)
+            or os.getenv("HTTPS_PROXY")
+            or os.getenv("https_proxy")
+            or os.getenv("HTTP_PROXY")
+            or os.getenv("http_proxy")
+            or os.getenv("ALL_PROXY")
+            or os.getenv("all_proxy")
+        )
+
+        if not proxy_url:
+            return None, []
+
+        parsed = urlparse(proxy_url)
+        if not parsed.scheme or not parsed.hostname:
+            print(f"  ⚠️  Ignoring invalid proxy URL: {proxy_url}")
+            return None, []
+
+        server = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            server += f":{parsed.port}"
+
+        proxy = {"server": server}
+        if parsed.username:
+            proxy["username"] = parsed.username
+        if parsed.password:
+            proxy["password"] = parsed.password
+
+        bypass = (
+            os.getenv(NOTEBOOKLM_PROXY_BYPASS_ENV)
+            or os.getenv("NO_PROXY")
+            or os.getenv("no_proxy")
+        )
+        if bypass:
+            proxy["bypass"] = bypass
+
+        chrome_args = [f"--proxy-server={server}"]
+        return proxy, chrome_args
+
+    @staticmethod
     def launch_persistent_context(
         playwright: Playwright,
         headless: bool = True,
-        user_data_dir: str = str(BROWSER_PROFILE_DIR)
+        user_data_dir: str = str(BROWSER_PROFILE_DIR),
     ) -> BrowserContext:
         """
         Launch a persistent browser context with anti-detection features
         and cookie workaround.
         """
-        # Launch persistent context
-        context = playwright.chromium.launch_persistent_context(
+        proxy, proxy_args = BrowserFactory._get_proxy_settings()
+
+        launch_kwargs = dict(
             user_data_dir=user_data_dir,
-            channel="chrome",  # Use real Chrome
+            channel="chrome",
             headless=headless,
             no_viewport=True,
             ignore_default_args=["--enable-automation"],
             user_agent=USER_AGENT,
-            args=BROWSER_ARGS
+            args=BROWSER_ARGS + proxy_args,
+            proxy=proxy,
         )
 
-        # Cookie Workaround for Playwright bug #36139
-        # Session cookies (expires=-1) don't persist in user_data_dir automatically
-        BrowserFactory._inject_cookies(context)
+        try:
+            context = playwright.chromium.launch_persistent_context(**launch_kwargs)
+        except Exception as error:
+            if "ProcessSingleton" not in str(error):
+                raise
+            fallback_root = tempfile.mkdtemp(prefix="notebooklm-profile-")
+            fallback_dir = os.path.join(fallback_root, "browser_profile")
+            print("  ⚠️  Browser profile is already in use; cloning it to a temporary profile")
+            try:
+                shutil.copytree(user_data_dir, fallback_dir, dirs_exist_ok=True)
+                for lock_name in ["SingletonLock", "SingletonCookie", "SingletonSocket", "DevToolsActivePort"]:
+                    lock_path = os.path.join(fallback_dir, lock_name)
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
+            except Exception as copy_error:
+                print(f"  ⚠️  Could not clone browser profile cleanly: {copy_error}")
+                os.makedirs(fallback_dir, exist_ok=True)
+            launch_kwargs["user_data_dir"] = fallback_dir
+            context = playwright.chromium.launch_persistent_context(**launch_kwargs)
 
+        BrowserFactory._inject_cookies(context)
         return context
 
     @staticmethod
@@ -47,13 +120,12 @@ class BrowserFactory:
         """Inject cookies from state.json if available"""
         if STATE_FILE.exists():
             try:
-                with open(STATE_FILE, 'r') as f:
-                    state = json.load(f)
-                    if 'cookies' in state and len(state['cookies']) > 0:
-                        context.add_cookies(state['cookies'])
-                        # print(f"  🔧 Injected {len(state['cookies'])} cookies from state.json")
-            except Exception as e:
-                print(f"  ⚠️  Could not load state.json: {e}")
+                with open(STATE_FILE, "r", encoding="utf-8") as handle:
+                    state = json.load(handle)
+                    if "cookies" in state and len(state["cookies"]) > 0:
+                        context.add_cookies(state["cookies"])
+            except Exception as error:
+                print(f"  ⚠️  Could not load state.json: {error}")
 
 
 class StealthUtils:
@@ -69,24 +141,34 @@ class StealthUtils:
         """Type with human-like speed"""
         element = page.query_selector(selector)
         if not element:
-            # Try waiting if not immediately found
             try:
                 element = page.wait_for_selector(selector, timeout=2000)
-            except:
+            except Exception:
                 pass
-        
+
         if not element:
             print(f"⚠️ Element not found for typing: {selector}")
             return
 
-        # Click to focus
         element.click()
-        
-        # Type
         for char in text:
             element.type(char, delay=random.uniform(25, 75))
             if random.random() < 0.05:
                 time.sleep(random.uniform(0.15, 0.4))
+
+    @staticmethod
+    def random_mouse_movement(page: Page):
+        """Move the mouse a little to look less robotic."""
+        try:
+            for _ in range(random.randint(2, 4)):
+                page.mouse.move(
+                    random.randint(50, 900),
+                    random.randint(50, 700),
+                    steps=random.randint(3, 8),
+                )
+                StealthUtils.random_delay(60, 180)
+        except Exception:
+            pass
 
     @staticmethod
     def realistic_click(page: Page, selector: str):
@@ -95,11 +177,10 @@ class StealthUtils:
         if not element:
             return
 
-        # Optional: Move mouse to element (simplified)
         box = element.bounding_box()
         if box:
-            x = box['x'] + box['width'] / 2
-            y = box['y'] + box['height'] / 2
+            x = box["x"] + box["width"] / 2
+            y = box["y"] + box["height"] / 2
             page.mouse.move(x, y, steps=5)
 
         StealthUtils.random_delay(100, 300)
