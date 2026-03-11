@@ -33,7 +33,8 @@ class BrowserFactory:
             no_viewport=True,
             ignore_default_args=["--enable-automation"],
             user_agent=USER_AGENT,
-            args=BROWSER_ARGS
+            args=BROWSER_ARGS,
+            permissions=["clipboard-read", "clipboard-write"]  # Grant clipboard permissions
         )
 
         # Cookie Workaround for Playwright bug #36139

@@ -123,6 +123,9 @@ python scripts/run.py ask_question.py --question "..." --notebook-url "https://.
 
 # Show browser for debugging
 python scripts/run.py ask_question.py --question "..." --show-browser
+
+# Get formatted markdown output (for code, lists, tables, etc.)
+python scripts/run.py ask_question.py --question "..." --markdown
 ```
 
 ## Follow-Up Mechanism (CRITICAL)
@@ -162,8 +165,12 @@ python scripts/run.py notebook_manager.py stats
 
 ### Question Interface (`ask_question.py`)
 ```bash
-python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
+python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser] [--markdown] [--log]
 ```
+
+**Options:**
+- `--markdown` - Get formatted markdown output via copy button (recommended for longer responses with formatting)
+- `--log` - Save outputs to log files in logs/ directory (original, markdown, and stats)
 
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
