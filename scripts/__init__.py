@@ -55,7 +55,7 @@ def ensure_venv_and_run():
                 check=True
             )
 
-            # Also install patchright's chromium
+            # Install Chrome for patchright (Chrome required, not Chromium)
             print("   Setting up browser automation...")
             if os.name == 'nt':
                 python_exe = venv_dir / "Scripts" / "python.exe"
@@ -63,7 +63,7 @@ def ensure_venv_and_run():
                 python_exe = venv_dir / "bin" / "python"
 
             subprocess.run(
-                [str(python_exe), "-m", "patchright", "install", "chromium"],
+                [str(python_exe), "-m", "patchright", "install", "chrome"],
                 check=True,
                 capture_output=True
             )

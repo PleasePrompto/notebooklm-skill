@@ -9,9 +9,8 @@ data/
 data/*
 data/**/*
 
-# Claude-specific
-.claude/
-*.claude
+# Claude-specific (only ignore user data, not hooks/settings)
+.claude/skills/
 
 # Python
 __pycache__/
