@@ -4,6 +4,12 @@
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "gemini-mcp-tool"]
+    },
+    "notebooklm": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["scripts/run.py", "mcp_server.py"],
+      "description": "NotebookLM MCP integration — query notebooks, manage library, trigger actions"
     }
   }
 }
