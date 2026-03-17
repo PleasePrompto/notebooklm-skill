@@ -185,7 +185,7 @@ Manual setup (only if automatic fails):
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
-python -m patchright install chromium
+python -m patchright install chrome
 ```
 
 ## Data Storage
