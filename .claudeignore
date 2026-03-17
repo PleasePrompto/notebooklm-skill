@@ -13,3 +13,8 @@ package-lock.json
 out/
 vendor/
 .idea/
+.vscode/
+.DS_Store
+*.min.js
+*.min.css
+*.map
