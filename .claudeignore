@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.git/
+*.log
+coverage/
+*.lock
+package-lock.json
+.env
+.env.*
+.next/
+.nuxt/
+out/
+vendor/
+.idea/
