@@ -50,9 +50,8 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python run.py <script_name> [args...]")
         print("\nAvailable scripts:")
-        print("  ask_question.py    - Query NotebookLM")
+        print("  ask_question.py     - Query NotebookLM")
         print("  notebook_manager.py - Manage notebook library")
-        print("  session_manager.py  - Manage sessions")
         print("  auth_manager.py     - Handle authentication")
         print("  cleanup_manager.py  - Clean up skill data")
         sys.exit(1)
