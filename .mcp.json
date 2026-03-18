@@ -10,6 +10,14 @@
       "command": "python",
       "args": ["scripts/run.py", "mcp_server.py"],
       "description": "NotebookLM MCP integration — query notebooks, manage library, trigger actions"
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token"
+      }
     }
   }
 }
