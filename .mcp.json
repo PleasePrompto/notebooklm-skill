@@ -3,7 +3,10 @@
     "gemini-cli": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "gemini-mcp-tool"]
+      "args": ["-y", "gemini-mcp-tool"],
+      "env": {
+        "GEMINI_API_KEY": "AIzaSyCKNVd1OFN4zWBaNQsBJN6tF81TOIXkcs4"
+      }
     },
     "notebooklm": {
       "type": "stdio",
