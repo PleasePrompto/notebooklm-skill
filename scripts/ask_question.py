@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
-from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
+from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS, QUERY_TIMEOUT_SECONDS
 from browser_utils import BrowserFactory, StealthUtils
 
 
@@ -35,6 +35,79 @@ FOLLOW_UP_REMINDER = (
     "If anything is still unclear or missing, ask me another comprehensive question "
     "that includes all necessary context (since each question opens a new browser session)."
 )
+
+TRANSIENT_RESPONSE_TEXTS = {
+    "Reading through pages...",
+    "Finding key words...",
+}
+
+
+def snapshot_responses(page):
+    """Get the current assistant response texts."""
+    for selector in RESPONSE_SELECTORS:
+        try:
+            elements = page.query_selector_all(selector)
+            texts = []
+            for element in elements:
+                text = element.inner_text().strip()
+                if text:
+                    texts.append(text)
+            if texts:
+                return texts
+        except Exception:
+            continue
+    return []
+
+
+def wait_for_response_hydration(page, timeout_seconds: int = 10):
+    """Wait briefly for existing conversation responses to finish hydrating."""
+    deadline = time.time() + timeout_seconds
+    last_count = None
+    stable_count = 0
+
+    while time.time() < deadline:
+        responses = snapshot_responses(page)
+        count = len(responses)
+
+        if count == last_count:
+            stable_count += 1
+            if stable_count >= 3:
+                return responses
+        else:
+            stable_count = 0
+            last_count = count
+
+        time.sleep(0.5)
+
+    return snapshot_responses(page)
+
+
+def find_new_response_candidate(page, previous_responses, question):
+    """Find the newest non-transient assistant response that was not present before asking."""
+    for selector in RESPONSE_SELECTORS:
+        try:
+            elements = page.query_selector_all(selector)
+            if not elements:
+                continue
+
+            texts = []
+            for element in elements:
+                text = element.inner_text().strip()
+                if text:
+                    texts.append(text)
+
+            for text in reversed(texts):
+                if text == question:
+                    continue
+                if text in TRANSIENT_RESPONSE_TEXTS:
+                    continue
+                if text in previous_responses:
+                    continue
+                return text
+        except Exception:
+            continue
+
+    return None
 
 
 def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
@@ -100,6 +173,9 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             print("  ❌ Could not find query input")
             return None
 
+        previous_responses = wait_for_response_hydration(page)
+        previous_count = len(previous_responses)
+
         # Type question (human-like, fast)
         print("  ⏳ Typing question...")
         
@@ -120,38 +196,30 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         answer = None
         stable_count = 0
         last_text = None
-        deadline = time.time() + 120  # 2 minutes timeout
+        saw_thinking = False
+        deadline = time.time() + QUERY_TIMEOUT_SECONDS
 
         while time.time() < deadline:
             # Check if NotebookLM is still thinking (most reliable indicator)
             try:
                 thinking_element = page.query_selector('div.thinking-message')
                 if thinking_element and thinking_element.is_visible():
+                    saw_thinking = True
                     time.sleep(1)
                     continue
             except:
                 pass
 
-            # Try to find response with MCP selectors
-            for selector in RESPONSE_SELECTORS:
-                try:
-                    elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
-
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
-                except:
-                    continue
+            text = find_new_response_candidate(page, previous_responses, question)
+            if text and (saw_thinking or len(snapshot_responses(page)) > previous_count):
+                if text == last_text:
+                    stable_count += 1
+                    if stable_count >= 3:  # Stable for 3 polls
+                        answer = text
+                        break
+                else:
+                    stable_count = 0
+                    last_text = text
 
             if answer:
                 break
