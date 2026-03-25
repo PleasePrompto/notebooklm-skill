@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 """
 NotebookLM MCP Server
-Exposes NotebookLM capabilities as MCP tools:
-  - query_notebook: Ask a question to a specific notebook
-  - list_notebooks: List all notebooks in the library
-  - add_notebook: Add a new notebook to the library
-  - get_notebook: Get notebook details by ID or name
-  - trigger_action: Trigger named actions (summarize, key-points, etc.)
-  - set_reminder: Create a reminder with due time, priority, recurrence
-  - list_reminders: List reminders with filters
-  - get_reminder: Get reminder details
-  - check_reminders: Check for overdue/upcoming reminders
-  - complete_reminder: Mark a reminder as done
-  - snooze_reminder: Postpone a reminder
-  - delete_reminder: Remove a reminder
-  - send_alert: Send email notifications
-  - email_status: Check email configuration
+Exposes NotebookLM + Workflow Management capabilities as MCP tools.
+
+Notebook tools: query, list, add, get, trigger_action
+Workflow tools: create/list/get/update/complete/snooze/delete workflow items
+                (tasks, projects, meetings, documents, trainings, reports,
+                 messages, follow-ups, reminders)
+Alert tools:    send_alert, check_workflow, workflow_dashboard, email_status
 
 Run via stdio (MCP protocol):
   python scripts/mcp_server.py
@@ -29,8 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from notebook_manager import NotebookLibrary
-from reminder_manager import ReminderManager
-from email_notifier import send_email, send_reminder_alert, is_configured as email_configured
+from workflow_manager import WorkflowManager, ITEM_TYPES, PRIORITIES, STATUSES, RECURRENCE_TYPES
+from email_notifier import send_email, send_workflow_alert, get_status as email_status_info, is_configured as email_configured
 from monitor import ProgressMonitor
 
 
@@ -55,13 +47,22 @@ def handle_initialize(req_id, _params):
         "result": {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "notebooklm", "version": "1.0.0"}
+            "serverInfo": {"name": "notebooklm", "version": "2.0.0"}
         }
     })
 
 
+# ── Tool type/enum constants for schemas ─────────────────────────
+
+_TYPE_ENUM = list(ITEM_TYPES.keys())
+_PRIORITY_ENUM = list(PRIORITIES)
+_STATUS_ENUM = list(STATUSES)
+_RECURRENCE_ENUM = list(RECURRENCE_TYPES)
+
+
 def handle_tools_list(req_id, _params):
     tools = [
+        # ── Notebook tools ───────────────────────────────────────
         {
             "name": "query_notebook",
             "description": "Ask a question to a NotebookLM notebook and get a source-grounded answer.",
@@ -121,106 +122,164 @@ def handle_tools_list(req_id, _params):
                 },
                 "required": ["action", "notebook_url"]
             }
-        }
-        # ── Reminder & Alert tools ──
+        },
+
+        # ── Workflow item tools ──────────────────────────────────
         {
-            "name": "set_reminder",
-            "description": "Create a reminder with a message, due time, priority, and optional recurrence. "
-                           "Due accepts: ISO-8601, relative ('in 5m', 'in 2h', 'in 3d'), or natural ('tomorrow', 'next week', 'eod').",
+            "name": "create_item",
+            "description": (
+                "Create a workflow item: task, project, meeting, document, training, "
+                "report, message, follow_up, or reminder. Supports due dates (ISO-8601, "
+                "relative like 'in 2h', or natural like 'tomorrow'), priorities, "
+                "recurrence, tags, and type-specific details."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "message": {"type": "string", "description": "What to be reminded about"},
-                    "due": {"type": "string", "description": "When the reminder is due (e.g. 'in 30m', 'tomorrow', '2026-04-01T09:00:00')"},
-                    "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "Priority level (default: medium)"},
-                    "recurrence": {"type": "string", "enum": ["none", "daily", "weekly", "monthly"], "description": "Recurrence pattern (default: none)"},
-                    "tags": {"type": "string", "description": "Comma-separated tags for organization"}
+                    "type": {"type": "string", "enum": _TYPE_ENUM, "description": "Item type"},
+                    "title": {"type": "string", "description": "Title or message"},
+                    "due": {"type": "string", "description": "Due date/time (e.g. 'in 30m', 'tomorrow', 'friday', ISO-8601)"},
+                    "description": {"type": "string", "description": "Detailed description"},
+                    "priority": {"type": "string", "enum": _PRIORITY_ENUM, "description": "Priority (default: medium)"},
+                    "recurrence": {"type": "string", "enum": _RECURRENCE_ENUM, "description": "Recurrence (default: none)"},
+                    "tags": {"type": "string", "description": "Comma-separated tags"},
+                    "details": {"type": "string", "description": "JSON string of type-specific details (e.g. attendees, assignee, doc_type)"},
+                    "notify": {"type": "boolean", "description": "Send email notification on creation (default: false)"}
                 },
-                "required": ["message", "due"]
+                "required": ["type", "title"]
             }
         },
         {
-            "name": "list_reminders",
-            "description": "List active reminders sorted by due date. Filter by status, priority, or tag.",
+            "name": "list_items",
+            "description": "List workflow items with optional filters. Sorted by due date.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "status": {"type": "string", "enum": ["pending", "done", "snoozed", "overdue"], "description": "Filter by status"},
-                    "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "Filter by priority"},
+                    "type": {"type": "string", "enum": _TYPE_ENUM, "description": "Filter by item type"},
+                    "status": {"type": "string", "enum": _STATUS_ENUM, "description": "Filter by status"},
+                    "priority": {"type": "string", "enum": _PRIORITY_ENUM, "description": "Filter by priority"},
                     "tag": {"type": "string", "description": "Filter by tag"},
-                    "include_done": {"type": "boolean", "description": "Include completed reminders (default: false)"}
+                    "search": {"type": "string", "description": "Search in title, description, tags"},
+                    "include_done": {"type": "boolean", "description": "Include completed items (default: false)"}
                 }
             }
         },
         {
-            "name": "get_reminder",
-            "description": "Get full details of a specific reminder by its ID.",
+            "name": "get_item",
+            "description": "Get full details of a workflow item by ID.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "reminder_id": {"type": "string", "description": "The reminder ID"}
+                    "item_id": {"type": "string", "description": "The item ID"}
                 },
-                "required": ["reminder_id"]
+                "required": ["item_id"]
             }
         },
         {
-            "name": "check_reminders",
-            "description": "Check for overdue and upcoming (due within 30 min) reminders. Use this to see what needs attention right now.",
+            "name": "update_item",
+            "description": "Update fields on an existing workflow item.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string", "description": "The item ID to update"},
+                    "title": {"type": "string", "description": "New title"},
+                    "description": {"type": "string", "description": "New description"},
+                    "due": {"type": "string", "description": "New due date"},
+                    "priority": {"type": "string", "enum": _PRIORITY_ENUM, "description": "New priority"},
+                    "status": {"type": "string", "enum": _STATUS_ENUM, "description": "New status"},
+                    "recurrence": {"type": "string", "enum": _RECURRENCE_ENUM, "description": "New recurrence"},
+                    "tags": {"type": "string", "description": "Comma-separated tags (replaces existing)"},
+                    "details": {"type": "string", "description": "JSON string of detail updates (merged with existing)"}
+                },
+                "required": ["item_id"]
+            }
+        },
+        {
+            "name": "complete_item",
+            "description": "Mark a workflow item as done. Recurring items automatically create the next occurrence.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string", "description": "The item ID to complete"}
+                },
+                "required": ["item_id"]
+            }
+        },
+        {
+            "name": "snooze_item",
+            "description": "Snooze/postpone a workflow item to a new time.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string", "description": "The item ID to snooze"},
+                    "until": {"type": "string", "description": "New due time (e.g. 'in 15m', 'tomorrow')"}
+                },
+                "required": ["item_id", "until"]
+            }
+        },
+        {
+            "name": "delete_item",
+            "description": "Permanently delete a workflow item.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string", "description": "The item ID to delete"}
+                },
+                "required": ["item_id"]
+            }
+        },
+        {
+            "name": "add_follow_up",
+            "description": "Create a follow-up item linked to an existing item (task, meeting, etc.).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "parent_id": {"type": "string", "description": "ID of the parent item"},
+                    "title": {"type": "string", "description": "Follow-up title/action"},
+                    "due": {"type": "string", "description": "When the follow-up is due"},
+                    "description": {"type": "string", "description": "Details"},
+                    "priority": {"type": "string", "enum": _PRIORITY_ENUM, "description": "Priority (default: medium)"},
+                    "notify": {"type": "boolean", "description": "Send email notification (default: false)"}
+                },
+                "required": ["parent_id", "title"]
+            }
+        },
+
+        # ── Dashboard & alerts ───────────────────────────────────
+        {
+            "name": "check_workflow",
+            "description": "Check for overdue items, items due soon (30 min), due today, and upcoming (7 days). Your workflow at-a-glance.",
             "inputSchema": {"type": "object", "properties": {}}
         },
         {
-            "name": "complete_reminder",
-            "description": "Mark a reminder as done. Recurring reminders automatically create the next occurrence.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "reminder_id": {"type": "string", "description": "The reminder ID to complete"}
-                },
-                "required": ["reminder_id"]
-            }
-        },
-        {
-            "name": "snooze_reminder",
-            "description": "Snooze a reminder to a new time. Accepts same time formats as set_reminder.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "reminder_id": {"type": "string", "description": "The reminder ID to snooze"},
-                    "duration": {"type": "string", "description": "New due time (e.g. 'in 15m', 'in 1h', 'tomorrow')"}
-                },
-                "required": ["reminder_id", "duration"]
-            }
+            "name": "workflow_dashboard",
+            "description": "Full workflow dashboard: counts by type, status, priority, plus top overdue items.",
+            "inputSchema": {"type": "object", "properties": {}}
         },
         {
             "name": "send_alert",
-            "description": "Send an email alert/notification. Can send a custom message or notify about a specific reminder. "
-                           "Requires ALERT_EMAIL_TO and ALERT_SMTP_PASSWORD in .env.",
+            "description": (
+                "Send an email alert. Either provide subject+body for a custom email, "
+                "or item_id to email about a specific workflow item. "
+                "Supports multiple recipients (configured via ALERT_EMAIL_TO in .env). "
+                "Can also add one-time extra recipients."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "subject": {"type": "string", "description": "Email subject line"},
                     "body": {"type": "string", "description": "Email body text"},
-                    "reminder_id": {"type": "string", "description": "Send alert for a specific reminder (alternative to subject/body)"},
-                    "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "Email priority (default: medium)"}
+                    "item_id": {"type": "string", "description": "Send alert for a specific workflow item"},
+                    "priority": {"type": "string", "enum": _PRIORITY_ENUM, "description": "Email priority (default: medium)"},
+                    "extra_recipients": {"type": "string", "description": "Comma-separated additional email addresses for this alert only"}
                 }
             }
         },
         {
             "name": "email_status",
-            "description": "Check if email notifications are configured and working.",
+            "description": "Check email notification configuration status.",
             "inputSchema": {"type": "object", "properties": {}}
         },
-        {
-            "name": "delete_reminder",
-            "description": "Permanently delete a reminder.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "reminder_id": {"type": "string", "description": "The reminder ID to delete"}
-                },
-                "required": ["reminder_id"]
-            }
-        }
     ]
     send_response({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
 
@@ -238,6 +297,8 @@ def handle_tool_call(req_id, params):
     monitor = ProgressMonitor(tool_name)
 
     try:
+        # ── Notebook handlers ────────────────────────────────────
+
         if tool_name == "list_notebooks":
             monitor.start("Loading notebook library")
             lib = NotebookLibrary()
@@ -263,7 +324,6 @@ def handle_tool_call(req_id, params):
             monitor.start("Looking up notebook")
             lib = NotebookLibrary()
             identifier = args["identifier"]
-            # Try by ID first, then by name
             nb = lib.notebooks.get(identifier)
             if not nb:
                 for n in lib.notebooks.values():
@@ -291,129 +351,192 @@ def handle_tool_call(req_id, params):
                     return
             _run_query(req_id, {"question": question, "notebook_url": args.get("notebook_url")}, monitor)
 
-        # ── Reminder tool handlers ──
+        # ── Workflow item handlers ───────────────────────────────
 
-        elif tool_name == "set_reminder":
-            monitor.start("Creating reminder")
-            mgr = ReminderManager()
+        elif tool_name == "create_item":
+            monitor.start(f"Creating {args.get('type', 'item')}")
+            wf = WorkflowManager()
             tags = [t.strip() for t in args.get("tags", "").split(",") if t.strip()] if args.get("tags") else None
-            reminder = mgr.add(
-                message=args["message"],
-                due=args["due"],
+            details = json.loads(args["details"]) if args.get("details") else None
+            item = wf.create(
+                item_type=args["type"],
+                title=args["title"],
+                due=args.get("due"),
+                description=args.get("description", ""),
                 priority=args.get("priority", "medium"),
                 recurrence=args.get("recurrence", "none"),
                 tags=tags,
+                details=details,
+                notify=args.get("notify", False),
             )
-            monitor.complete(f"Reminder {reminder['id']} created")
-            _tool_result(req_id, json.dumps(reminder, indent=2))
+            monitor.complete(f"{item['type_label']} {item['id']} created")
+            _tool_result(req_id, json.dumps(item, indent=2))
 
-        elif tool_name == "list_reminders":
-            monitor.start("Listing reminders")
-            mgr = ReminderManager()
-            reminders = mgr.list_reminders(
+        elif tool_name == "list_items":
+            monitor.start("Listing workflow items")
+            wf = WorkflowManager()
+            items = wf.list_items(
+                item_type=args.get("type"),
                 status=args.get("status"),
                 priority=args.get("priority"),
                 tag=args.get("tag"),
+                search=args.get("search"),
                 include_done=args.get("include_done", False),
             )
-            monitor.complete(f"Found {len(reminders)} reminders")
-            if reminders:
-                _tool_result(req_id, json.dumps(reminders, indent=2))
+            monitor.complete(f"Found {len(items)} items")
+            if items:
+                # Compact summary
+                lines = []
+                for it in items:
+                    due = it["due"][:16] if it.get("due") else "no due"
+                    lines.append(
+                        f"[{it['id']}] {it['type_label']:10s} | {it['priority']:8s} | "
+                        f"{it['status']:11s} | {due} | {it['title']}"
+                    )
+                header = f"{'ID':10s} {'Type':10s} | {'Priority':8s} | {'Status':11s} | {'Due':16s} | Title"
+                _tool_result(req_id, header + "\n" + "\n".join(lines))
             else:
-                _tool_result(req_id, "No reminders found.")
+                _tool_result(req_id, "No items found.")
 
-        elif tool_name == "get_reminder":
-            monitor.start("Looking up reminder")
-            mgr = ReminderManager()
-            reminder = mgr.get(args["reminder_id"])
+        elif tool_name == "get_item":
+            monitor.start("Looking up item")
+            wf = WorkflowManager()
+            item = wf.get(args["item_id"])
             monitor.complete("Done")
-            if reminder:
-                _tool_result(req_id, json.dumps(reminder, indent=2))
+            if item:
+                _tool_result(req_id, json.dumps(item, indent=2))
             else:
-                _tool_result(req_id, f"Reminder not found: {args['reminder_id']}")
+                _tool_result(req_id, f"Item not found: {args['item_id']}")
 
-        elif tool_name == "check_reminders":
-            monitor.start("Checking due reminders")
-            mgr = ReminderManager()
-            result = mgr.check_due()
-            monitor.complete("Done")
-            overdue = result["overdue"]
-            due_soon = result["due_soon"]
-            parts = []
-            if overdue:
-                parts.append(f"OVERDUE ({len(overdue)}):\n" + json.dumps(overdue, indent=2))
-            if due_soon:
-                parts.append(f"DUE SOON ({len(due_soon)}):\n" + json.dumps(due_soon, indent=2))
-            if not parts:
-                parts.append("All clear - no overdue or upcoming reminders.")
-            _tool_result(req_id, "\n\n".join(parts))
+        elif tool_name == "update_item":
+            monitor.start("Updating item")
+            wf = WorkflowManager()
+            updates = {}
+            for field in ("title", "description", "due", "priority", "status", "recurrence"):
+                if field in args:
+                    updates[field] = args[field]
+            if "tags" in args:
+                updates["tags"] = [t.strip() for t in args["tags"].split(",") if t.strip()]
+            if "details" in args:
+                updates["details"] = json.loads(args["details"])
+            item = wf.update(args["item_id"], updates)
+            monitor.complete(f"Item {args['item_id']} updated")
+            _tool_result(req_id, json.dumps(item, indent=2))
 
-        elif tool_name == "complete_reminder":
-            monitor.start("Completing reminder")
-            mgr = ReminderManager()
-            reminder = mgr.complete(args["reminder_id"])
-            monitor.complete(f"Reminder {args['reminder_id']} completed")
-            msg = f"Reminder completed: {reminder['message']}"
-            if reminder.get("recurrence") != "none":
-                msg += f"\nNext occurrence created ({reminder['recurrence']} recurrence)."
+        elif tool_name == "complete_item":
+            monitor.start("Completing item")
+            wf = WorkflowManager()
+            result = wf.complete(args["item_id"])
+            completed = result["completed"]
+            next_occ = result["next_occurrence"]
+            monitor.complete(f"Item {args['item_id']} completed")
+            msg = f"Completed: {completed['title']}"
+            if next_occ:
+                msg += f"\nNext occurrence created: {next_occ['id']} (due {next_occ['due']})"
             _tool_result(req_id, msg)
 
-        elif tool_name == "snooze_reminder":
-            monitor.start("Snoozing reminder")
-            mgr = ReminderManager()
-            reminder = mgr.snooze(args["reminder_id"], args["duration"])
-            monitor.complete(f"Snoozed until {reminder['due']}")
-            _tool_result(req_id, f"Reminder snoozed until {reminder['due']}\n" + json.dumps(reminder, indent=2))
+        elif tool_name == "snooze_item":
+            monitor.start("Snoozing item")
+            wf = WorkflowManager()
+            item = wf.snooze(args["item_id"], args["until"])
+            monitor.complete(f"Snoozed until {item['due']}")
+            _tool_result(req_id, f"Snoozed until {item['due']}\n" + json.dumps(item, indent=2))
+
+        elif tool_name == "delete_item":
+            monitor.start("Deleting item")
+            wf = WorkflowManager()
+            deleted = wf.delete(args["item_id"])
+            monitor.complete("Done")
+            _tool_result(req_id, f"Item {args['item_id']} deleted." if deleted else f"Item not found: {args['item_id']}")
+
+        elif tool_name == "add_follow_up":
+            monitor.start("Creating follow-up")
+            wf = WorkflowManager()
+            follow_up = wf.add_follow_up(
+                parent_id=args["parent_id"],
+                title=args["title"],
+                due=args.get("due"),
+                description=args.get("description", ""),
+                priority=args.get("priority", "medium"),
+                notify=args.get("notify", False),
+            )
+            monitor.complete(f"Follow-up {follow_up['id']} created")
+            _tool_result(req_id, json.dumps(follow_up, indent=2))
+
+        # ── Dashboard & alert handlers ───────────────────────────
+
+        elif tool_name == "check_workflow":
+            monitor.start("Checking workflow")
+            wf = WorkflowManager()
+            result = wf.check_due()
+            monitor.complete("Done")
+            parts = []
+            for key, label in [("overdue", "OVERDUE"), ("due_soon", "DUE IN 30 MIN"),
+                                ("due_today", "DUE TODAY"), ("upcoming_7_days", "NEXT 7 DAYS")]:
+                items = result[key]
+                if items:
+                    lines = []
+                    for it in items:
+                        due_str = it["due"][:16] if it.get("due") else ""
+                        lines.append(f"  [{it['id']}] {it['type_label']}: {it['title']} (due {due_str}, {it['priority']})")
+                    parts.append(f"{label} ({len(items)}):\n" + "\n".join(lines))
+            if not parts:
+                parts.append("All clear - nothing overdue or due soon.")
+            _tool_result(req_id, "\n\n".join(parts))
+
+        elif tool_name == "workflow_dashboard":
+            monitor.start("Building dashboard")
+            wf = WorkflowManager()
+            dash = wf.dashboard()
+            monitor.complete("Done")
+            _tool_result(req_id, json.dumps(dash, indent=2))
 
         elif tool_name == "send_alert":
             monitor.start("Sending email alert")
-            reminder_id = args.get("reminder_id")
-            if reminder_id:
-                mgr = ReminderManager()
-                reminder = mgr.get(reminder_id)
-                if not reminder:
-                    send_error(req_id, -32602, f"Reminder not found: {reminder_id}")
+            extra = [e.strip() for e in args.get("extra_recipients", "").split(",") if e.strip()] if args.get("extra_recipients") else None
+            item_id = args.get("item_id")
+            if item_id:
+                wf = WorkflowManager()
+                item = wf.get(item_id)
+                if not item:
+                    send_error(req_id, -32602, f"Item not found: {item_id}")
                     return
-                result = send_reminder_alert(reminder)
+                result = send_workflow_alert(item, action="alert")
             else:
-                subject = args.get("subject", "Alert from NotebookLM Skill")
+                subject = args.get("subject", "Workflow Alert")
                 body = args.get("body", "")
                 if not body:
-                    send_error(req_id, -32602, "Either 'body' or 'reminder_id' is required")
+                    send_error(req_id, -32602, "Either 'body' or 'item_id' is required")
                     return
-                result = send_email(subject, body, args.get("priority", "medium"))
+                result = send_email(subject, body, args.get("priority", "medium"), extra_recipients=extra)
             monitor.complete("Done")
             _tool_result(req_id, result)
 
         elif tool_name == "email_status":
             monitor.start("Checking email config")
-            configured = email_configured()
+            status = email_status_info()
             monitor.complete("Done")
-            if configured:
-                _tool_result(req_id, "Email notifications are configured and ready. Use 'send_alert' to send emails.")
+            if status["configured"]:
+                lines = [
+                    "Email notifications: CONFIGURED",
+                    f"Recipients: {', '.join(status['recipients'])}",
+                    f"Sender: {status['sender']}",
+                    f"SMTP: {status['smtp_host']}:{status['smtp_port']}",
+                ]
+                _tool_result(req_id, "\n".join(lines))
             else:
                 _tool_result(req_id,
-                    "Email notifications are NOT configured.\n\n"
+                    "Email notifications: NOT CONFIGURED\n\n"
                     "Add these to your .env file:\n"
-                    "  ALERT_EMAIL_TO=your@email.com\n"
+                    "  ALERT_EMAIL_TO=work@company.com,personal@gmail.com\n"
                     "  ALERT_SMTP_PASSWORD=your-app-password\n\n"
                     "Optional:\n"
                     "  ALERT_EMAIL_FROM=sender@email.com\n"
                     "  ALERT_SMTP_HOST=smtp.gmail.com\n"
-                    "  ALERT_SMTP_PORT=587\n"
-                    "  ALERT_SMTP_USER=your@email.com\n\n"
+                    "  ALERT_SMTP_PORT=587\n\n"
                     "For Gmail: use an App Password (not your regular password).\n"
-                    "Generate one at: https://myaccount.google.com/apppasswords")
-
-        elif tool_name == "delete_reminder":
-            monitor.start("Deleting reminder")
-            mgr = ReminderManager()
-            deleted = mgr.delete(args["reminder_id"])
-            monitor.complete("Done")
-            if deleted:
-                _tool_result(req_id, f"Reminder {args['reminder_id']} deleted.")
-            else:
-                _tool_result(req_id, f"Reminder not found: {args['reminder_id']}")
+                    "Generate at: https://myaccount.google.com/apppasswords\n\n"
+                    "Multiple recipients: separate with commas in ALERT_EMAIL_TO.")
 
         else:
             send_error(req_id, -32601, f"Unknown tool: {tool_name}")
@@ -424,14 +547,13 @@ def handle_tool_call(req_id, params):
 
 
 def _run_query(req_id, args, monitor: "ProgressMonitor"):
-    """Execute a NotebookLM query (imports ask_question to avoid circular deps)."""
+    """Execute a NotebookLM query."""
     from ask_question import ask_notebooklm
 
     question = args.get("question", "")
     notebook_url = args.get("notebook_url")
 
     if not notebook_url:
-        # Try active notebook from library
         lib = NotebookLibrary()
         if lib.active_notebook_id and lib.active_notebook_id in lib.notebooks:
             notebook_url = lib.notebooks[lib.active_notebook_id]["url"]
@@ -477,7 +599,7 @@ def main():
         if method == "initialize":
             handle_initialize(req_id, params)
         elif method == "notifications/initialized":
-            pass  # No response needed
+            pass
         elif method == "tools/list":
             handle_tools_list(req_id, params)
         elif method == "tools/call":
