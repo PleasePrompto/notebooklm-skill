@@ -14,12 +14,16 @@ Configuration via environment variables (or .env file):
 """
 
 import os
+import sys
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+
+sys.path.insert(0, str(Path(__file__).parent))
+from config import TIMEZONE, TIMEZONE_NAME
 
 # Try loading .env from project root
 try:
@@ -109,10 +113,11 @@ def send_email(
     msg["X-Priority"] = priority_map.get(priority, "3 (Normal)")
 
     # Build body with footer
+    dubai_now = datetime.now(TIMEZONE)
     full_body = (
         f"{body}\n\n"
         f"---\n"
-        f"Sent at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Sent at: {dubai_now.strftime('%Y-%m-%d %H:%M:%S')} ({TIMEZONE_NAME})\n"
         f"From: Workflow Manager - NotebookLM Skill"
     )
     msg.attach(MIMEText(full_body, "plain"))

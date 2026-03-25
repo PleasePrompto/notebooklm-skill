@@ -21,6 +21,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 sys.path.insert(0, str(Path(__file__).parent))
+from config import TIMEZONE
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 SKILL_DIR = Path(__file__).parent.parent
 DATA_DIR = SKILL_DIR / "data"
@@ -86,7 +89,7 @@ def fetch_prices() -> Dict[str, Any]:
 
     return {
         "error": f"Could not fetch prices. Tried: {'; '.join(errors)}",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(TIMEZONE).isoformat(),
     }
 
 
@@ -180,7 +183,7 @@ def _extract_price_from_html(html: str) -> Optional[float]:
 
 def _build_result(gold: float, silver: float, source: str) -> Dict[str, Any]:
     """Build standardized price result."""
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
     ratio = gold / silver if silver > 0 else 0
 
     result = {
@@ -244,7 +247,7 @@ def get_price_history(metal: str = "XAU", days: int = 7) -> List[Dict[str, Any]]
     """Get price history for a metal over N days."""
     metal = _resolve_metal(metal)
     data = _load_data()
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(TIMEZONE) - timedelta(days=days)).isoformat()
     return [
         {"price": h[metal], "timestamp": h["timestamp"], "source": h.get("source", "")}
         for h in data["history"]
@@ -272,7 +275,7 @@ def set_price_alert(
         "condition": condition,
         "target_price": price,
         "notify": notify,
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.now(TIMEZONE).isoformat(),
         "triggered": False,
         "triggered_at": None,
     }
@@ -305,7 +308,7 @@ def check_price_alerts(current_prices: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         if hit:
             alert["triggered"] = True
-            alert["triggered_at"] = datetime.now().isoformat()
+            alert["triggered_at"] = datetime.now(TIMEZONE).isoformat()
             alert["triggered_price"] = current
             triggered.append(alert)
 
@@ -321,7 +324,7 @@ def check_price_alerts(current_prices: Dict[str, Any]) -> List[Dict[str, Any]]:
                             f"{metal_name} Price Alert Triggered!\n\n"
                             f"Condition: {metal_name} {condition} ${target:.2f}\n"
                             f"Current price: ${current:.2f}\n"
-                            f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            f"Time: {datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')}"
                         )
                         send_email(subject, body, "critical")
                 except Exception:

@@ -29,6 +29,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any
 
 sys.path.insert(0, str(Path(__file__).parent))
+from config import TIMEZONE, TIMEZONE_NAME, DIGEST_CRON_UTC_HOUR
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -61,7 +64,7 @@ def _save_notified(notified: Dict[str, str]):
 def _log(message: str):
     """Append to scheduler log."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {message}\n"
     with open(SCHEDULER_LOG, "a") as f:
         f.write(line)
@@ -86,7 +89,7 @@ def check_and_alert(dry_run: bool = False) -> Dict[str, Any]:
     if not items:
         return {"checked": 0, "alerted": 0}
 
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
     notified = _load_notified()
     alerts_sent = 0
     alerts_detail = []
@@ -214,7 +217,7 @@ def send_daily_digest(dry_run: bool = False) -> str:
         data = json.load(f)
 
     items = data.get("items", {})
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
 
     overdue = []
     due_today = []
@@ -311,8 +314,8 @@ def install_cron(interval: int = 5, include_digest: bool = True):
     # Alert check every N minutes
     alert_job = f"*/{interval} * * * * cd {SKILL_DIR} && {python} {script} check  # {CRON_TAG}"
 
-    # Daily digest at 8:00 AM
-    digest_job = f"0 8 * * * cd {SKILL_DIR} && {python} {script} digest  # {CRON_TAG}"
+    # Daily digest at 8:00 AM Dubai time (UTC+4 = 4 AM UTC)
+    digest_job = f"0 {DIGEST_CRON_UTC_HOUR} * * * cd {SKILL_DIR} && {python} {script} digest  # {CRON_TAG}"
 
     # Get existing crontab (excluding our jobs)
     try:
@@ -338,7 +341,7 @@ def install_cron(interval: int = 5, include_digest: bool = True):
         print(f"Installed cron jobs:")
         print(f"  Alert check: every {interval} minutes")
         if include_digest:
-            print(f"  Daily digest: 8:00 AM")
+            print(f"  Daily digest: 8:00 AM Dubai time ({TIMEZONE_NAME})")
         print(f"\nView with: crontab -l")
     else:
         print(f"Failed to install cron: {proc.stderr}")
