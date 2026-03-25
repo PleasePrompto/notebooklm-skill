@@ -28,9 +28,22 @@ PRICES_FILE = DATA_DIR / "prices.json"
 
 # Symbols
 METALS = {
-    "gold": {"symbol": "XAU", "unit": "USD/oz", "name": "Gold"},
-    "silver": {"symbol": "XAG", "unit": "USD/oz", "name": "Silver"},
+    "XAU": {"symbol": "XAU", "unit": "USD/oz", "name": "Gold (XAU)"},
+    "XAG": {"symbol": "XAG", "unit": "USD/oz", "name": "Silver (XAG)"},
 }
+# Aliases for convenience
+METAL_ALIASES = {"gold": "XAU", "silver": "XAG", "xau": "XAU", "xag": "XAG"}
+
+
+def _resolve_metal(metal: str) -> str:
+    """Resolve a metal name/alias to its standard symbol."""
+    key = metal.strip().upper()
+    if key in METALS:
+        return key
+    alias = METAL_ALIASES.get(metal.strip().lower())
+    if alias:
+        return alias
+    raise ValueError(f"Unknown metal '{metal}'. Use: XAU (gold) or XAG (silver)")
 
 # ── Price fetching ───────────────────────────────────────────────
 
@@ -171,19 +184,19 @@ def _build_result(gold: float, silver: float, source: str) -> Dict[str, Any]:
     ratio = gold / silver if silver > 0 else 0
 
     result = {
-        "gold": {
+        "XAU": {
             "price": round(gold, 2),
             "symbol": "XAU",
             "unit": "USD/oz",
-            "name": "Gold",
+            "name": "Gold (XAU)",
         },
-        "silver": {
+        "XAG": {
             "price": round(silver, 2),
             "symbol": "XAG",
             "unit": "USD/oz",
-            "name": "Silver",
+            "name": "Silver (XAG)",
         },
-        "gold_silver_ratio": round(ratio, 2),
+        "XAU_XAG_ratio": round(ratio, 2),
         "source": source,
         "timestamp": now.isoformat(),
     }
@@ -217,8 +230,8 @@ def _save_price_history(result: Dict[str, Any]):
     """Save a price snapshot to history (keep last 30 days)."""
     data = _load_data()
     data["history"].append({
-        "gold": result["gold"]["price"],
-        "silver": result["silver"]["price"],
+        "XAU": result["XAU"]["price"],
+        "XAG": result["XAG"]["price"],
         "source": result["source"],
         "timestamp": result["timestamp"],
     })
@@ -227,13 +240,15 @@ def _save_price_history(result: Dict[str, Any]):
     _save_data(data)
 
 
-def get_price_history(metal: str = "gold", days: int = 7) -> List[Dict[str, Any]]:
+def get_price_history(metal: str = "XAU", days: int = 7) -> List[Dict[str, Any]]:
     """Get price history for a metal over N days."""
+    metal = _resolve_metal(metal)
     data = _load_data()
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     return [
-        h for h in data["history"]
-        if h["timestamp"] >= cutoff
+        {"price": h[metal], "timestamp": h["timestamp"], "source": h.get("source", "")}
+        for h in data["history"]
+        if h["timestamp"] >= cutoff and metal in h
     ]
 
 
@@ -246,9 +261,7 @@ def set_price_alert(
     notify: bool = True,
 ) -> Dict[str, Any]:
     """Set a price alert for gold or silver."""
-    metal = metal.lower()
-    if metal not in METALS:
-        raise ValueError(f"Invalid metal '{metal}'. Choose: gold, silver")
+    metal = _resolve_metal(metal)
     if condition not in ("above", "below"):
         raise ValueError("Condition must be 'above' or 'below'")
 

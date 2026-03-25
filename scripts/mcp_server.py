@@ -289,17 +289,17 @@ def handle_tools_list(req_id, _params):
         # ── Price tracking tools ─────────────────────────────────
         {
             "name": "check_prices",
-            "description": "Get current gold and silver prices (USD/oz) from Reuters/LSEG. "
-                           "Also shows the gold/silver ratio and checks any active price alerts.",
+            "description": "Get current XAU (gold) and XAG (silver) prices (USD/oz) from Reuters/LSEG. "
+                           "Also shows the XAU/XAG ratio and checks any active price alerts.",
             "inputSchema": {"type": "object", "properties": {}}
         },
         {
             "name": "set_price_alert",
-            "description": "Set a price alert for gold or silver. Get emailed when price crosses your threshold.",
+            "description": "Set a price alert for XAU (gold) or XAG (silver). Get emailed when price crosses your threshold.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "metal": {"type": "string", "enum": ["gold", "silver"], "description": "Which metal"},
+                    "metal": {"type": "string", "enum": ["XAU", "XAG"], "description": "XAU (gold) or XAG (silver)"},
                     "condition": {"type": "string", "enum": ["above", "below"], "description": "Trigger when price goes above or below target"},
                     "price": {"type": "number", "description": "Target price in USD/oz"},
                     "notify": {"type": "boolean", "description": "Send email when triggered (default: true)"}
@@ -309,7 +309,7 @@ def handle_tools_list(req_id, _params):
         },
         {
             "name": "list_price_alerts",
-            "description": "List all active price alerts for gold and silver.",
+            "description": "List all active price alerts for XAU and XAG.",
             "inputSchema": {"type": "object", "properties": {}}
         },
         {
@@ -325,11 +325,11 @@ def handle_tools_list(req_id, _params):
         },
         {
             "name": "price_history",
-            "description": "Get price history for gold or silver over a number of days.",
+            "description": "Get price history for XAU (gold) or XAG (silver) over a number of days.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "metal": {"type": "string", "enum": ["gold", "silver"], "description": "Which metal (default: gold)"},
+                    "metal": {"type": "string", "enum": ["XAU", "XAG"], "description": "XAU (gold) or XAG (silver). Default: XAU"},
                     "days": {"type": "number", "description": "Number of days of history (default: 7)"}
                 }
             }
@@ -601,12 +601,12 @@ def handle_tool_call(req_id, params):
             if "error" in result:
                 _tool_result(req_id, f"Error: {result['error']}")
             else:
-                gold = result["gold"]
-                silver = result["silver"]
+                xau = result["XAU"]
+                xag = result["XAG"]
                 lines = [
-                    f"Gold (XAU):   ${gold['price']:,.2f} USD/oz",
-                    f"Silver (XAG): ${silver['price']:,.2f} USD/oz",
-                    f"Gold/Silver Ratio: {result['gold_silver_ratio']:.1f}",
+                    f"XAU (Gold):   ${xau['price']:,.2f} USD/oz",
+                    f"XAG (Silver): ${xag['price']:,.2f} USD/oz",
+                    f"XAU/XAG Ratio: {result['XAU_XAG_ratio']:.1f}",
                     f"Source: {result['source']}",
                     f"Time: {result['timestamp'][:19]}",
                 ]
@@ -659,14 +659,14 @@ def handle_tool_call(req_id, params):
 
         elif tool_name == "price_history":
             monitor.start("Loading price history")
-            metal = args.get("metal", "gold")
+            metal = args.get("metal", "XAU")
             days = int(args.get("days", 7))
             history = get_price_history(metal, days)
             monitor.complete("Done")
             if history:
-                lines = [f"{metal.upper()} price history (last {days} days):"]
+                lines = [f"{metal} price history (last {days} days):"]
                 for h in history[-20:]:  # Last 20 entries
-                    lines.append(f"  {h['timestamp'][:16]} - ${h[metal]:,.2f}")
+                    lines.append(f"  {h['timestamp'][:16]} - ${h['price']:,.2f}")
                 if len(history) > 20:
                     lines.insert(1, f"  (showing last 20 of {len(history)} entries)")
                 _tool_result(req_id, "\n".join(lines))
