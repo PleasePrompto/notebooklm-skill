@@ -75,6 +75,10 @@ def _render_dashboard_html(data: Dict[str, Any]) -> str:
     au = data.get("audit", {})
     feed = data.get("feed", {})
 
+    # Compute high-risk client count
+    risk_ratings = cl.get("by_risk_rating", {})
+    high_risk_count = risk_ratings.get("high", 0) + risk_ratings.get("critical", 0)
+
     # Overdue items
     overdue_items = data.get("workflow_due", {}).get("overdue", [])
     due_today = data.get("workflow_due", {}).get("due_today", []) + data.get("workflow_due", {}).get("due_soon", [])
@@ -155,7 +159,7 @@ body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; col
         <div class="stats">
             <div class="stat"><div class="num">{cl.get('total_clients',0)}</div><div class="label">Total</div></div>
             <div class="stat critical"><div class="num">{cl.get('reviews_overdue',0)}</div><div class="label">Reviews Due</div></div>
-            <div class="stat"><div class="num">{cl.get('by_risk_rating',{{}}).get('high',0) + cl.get('by_risk_rating',{{}}).get('critical',0)}</div><div class="label">High Risk</div></div>
+            <div class="stat"><div class="num">{high_risk_count}</div><div class="label">High Risk</div></div>
         </div>
     </div>
 

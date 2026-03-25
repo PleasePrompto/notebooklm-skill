@@ -465,6 +465,8 @@ class WorkflowManager:
         for item in self.items.values():
             if item["status"] in ("pending", "in_progress", "waiting", "snoozed") and item.get("due"):
                 due_dt = datetime.fromisoformat(item["due"])
+                if not due_dt.tzinfo:
+                    due_dt = due_dt.replace(tzinfo=TIMEZONE)
                 if due_dt <= now and item["status"] != "overdue":
                     item["status"] = "overdue"
                     item["updated_at"] = now.isoformat()
