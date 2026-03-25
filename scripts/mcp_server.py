@@ -39,6 +39,14 @@ from sanctions_checker import (
 from client_database import ClientDatabase, RISK_RATINGS, KYC_STATUSES, CLIENT_TYPES
 from audit_trail import log_action, query_audit, verify_audit, audit_stats
 from report_generator import generate_compliance_report, list_reports
+from pdf_report import generate_pdf_report
+from onboarding_checklist import create_onboarding, get_onboarding_status, CHECKLISTS
+from risk_countries import check_country, check_nationality, get_all_lists as get_risk_lists, get_fatf_summary
+from regulatory_feed import fetch_updates as fetch_reg_updates, get_unread as get_unread_articles, mark_read as mark_articles_read, get_feed_status
+from compliance_calendar import get_upcoming_deadlines, load_calendar_to_workflow, get_ongoing_obligations, get_full_calendar
+from str_template import generate_str, list_str_reports, get_indicators as get_str_indicators
+from web_dashboard import start_dashboard, generate_static_dashboard
+from gap_assessment import run_gap_assessment, list_assessments as list_gap_assessments, get_frameworks
 from monitor import ProgressMonitor
 
 
@@ -564,6 +572,198 @@ def handle_tools_list(req_id, _params):
         {
             "name": "list_reports",
             "description": "List all previously generated compliance reports.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── PDF branded report tools ──────────────────────────────
+        {
+            "name": "generate_pdf_report",
+            "description": "Generate a branded, print-ready HTML report (open in browser and Ctrl+P to save as PDF). Types: full, sanctions, kyc, aml, executive.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "report_type": {"type": "string", "enum": ["full", "sanctions", "kyc", "aml", "executive"], "description": "Report type (default: full)"},
+                    "title": {"type": "string", "description": "Custom report title (optional)"},
+                    "client_id": {"type": "string", "description": "Generate report for specific client"}
+                }
+            }
+        },
+
+        # ── Client onboarding tools ───────────────────────────────
+        {
+            "name": "start_onboarding",
+            "description": "Start a KYC/AML onboarding checklist for a new client. Creates a project with all required steps based on client type (individual, corporate, trust, government, npo).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "client_name": {"type": "string", "description": "Client name"},
+                    "client_type": {"type": "string", "enum": list(CHECKLISTS.keys()), "description": "Client type (default: individual)"},
+                    "client_id": {"type": "string", "description": "Existing client ID (optional)"}
+                },
+                "required": ["client_name"]
+            }
+        },
+        {
+            "name": "onboarding_status",
+            "description": "Check progress of a client onboarding (percentage complete, pending steps).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "client_name": {"type": "string", "description": "Client name used in onboarding"}
+                },
+                "required": ["client_name"]
+            }
+        },
+
+        # ── Risk country tools ────────────────────────────────────
+        {
+            "name": "check_country_risk",
+            "description": "Check if a country is on FATF blacklist/greylist or UAE high-risk list.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "country": {"type": "string", "description": "Country name or 2-letter code"}
+                },
+                "required": ["country"]
+            }
+        },
+        {
+            "name": "fatf_lists",
+            "description": "Get all FATF blacklist, greylist, and UAE high-risk country lists.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Regulatory news feed tools ────────────────────────────
+        {
+            "name": "fetch_regulatory_news",
+            "description": "Fetch latest regulatory updates from CBUAE, FATF, UAE Ministry of Economy, and NAMLCFTC.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "Specific source (CBUAE, FATF, UAE_MOE, NAMLCFTC) or leave empty for all"}
+                }
+            }
+        },
+        {
+            "name": "unread_regulatory_news",
+            "description": "Get unread regulatory news articles.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "mark_news_read",
+            "description": "Mark regulatory news as read. Provide article_id for one, or leave empty to mark all as read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "article_id": {"type": "string", "description": "Article ID (leave empty for all)"}
+                }
+            }
+        },
+        {
+            "name": "regulatory_feed_status",
+            "description": "Check regulatory news feed status and last fetch times.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Compliance calendar tools ─────────────────────────────
+        {
+            "name": "upcoming_deadlines",
+            "description": "Get upcoming UAE regulatory deadlines (CBUAE, FIU, FATF reporting dates).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "days": {"type": "number", "description": "Look-ahead days (default: 90)"}
+                }
+            }
+        },
+        {
+            "name": "load_compliance_calendar",
+            "description": "Create workflow reminders for all upcoming regulatory deadlines (auto-populates your workflow).",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "ongoing_obligations",
+            "description": "List all ongoing compliance obligations (STR filing, sanctions freezing, record keeping, etc.).",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "full_calendar",
+            "description": "Get complete compliance calendar: annual, quarterly, monthly deadlines and ongoing obligations.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── STR/SAR template tools ────────────────────────────────
+        {
+            "name": "generate_str",
+            "description": "Generate a pre-filled Suspicious Transaction Report (STR/SAR) template for goAML submission.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "client_name": {"type": "string", "description": "Subject of the report"},
+                    "client_id": {"type": "string", "description": "Client ID (auto-fills details)"},
+                    "transaction_date": {"type": "string", "description": "Transaction date (ISO-8601)"},
+                    "transaction_amount": {"type": "string", "description": "Transaction amount"},
+                    "transaction_currency": {"type": "string", "description": "Currency (default: AED)"},
+                    "transaction_type": {"type": "string", "description": "Transaction type (e.g. Wire transfer, Cash deposit)"},
+                    "indicators": {"type": "string", "description": "Comma-separated suspicion indicators (e.g. structuring, sanctions_link, unusual_cash)"},
+                    "narrative": {"type": "string", "description": "Narrative describing the suspicious activity"},
+                    "reporting_officer": {"type": "string", "description": "Name of reporting officer"},
+                    "additional_parties": {"type": "string", "description": "Additional parties involved"}
+                },
+                "required": ["client_name"]
+            }
+        },
+        {
+            "name": "list_str_reports",
+            "description": "List all generated STR/SAR reports.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "str_indicators",
+            "description": "List all available STR suspicion indicators (CBUAE categories).",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Web dashboard tools ───────────────────────────────────
+        {
+            "name": "start_web_dashboard",
+            "description": "Start the auto-refreshing web compliance dashboard (opens in browser).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "port": {"type": "number", "description": "Port number (default: 8080)"}
+                }
+            }
+        },
+        {
+            "name": "generate_dashboard_html",
+            "description": "Generate a static HTML dashboard file (for offline viewing or sharing).",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Gap assessment tools ──────────────────────────────────
+        {
+            "name": "gap_assessment",
+            "description": "Run a compliance gap assessment on a document. Analyzes text against CBUAE AML, FATF, and LBMA requirements. Identifies covered areas, partial coverage, and gaps with priority actions.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "document_text": {"type": "string", "description": "The full text content of the document to assess"},
+                    "document_name": {"type": "string", "description": "Name/title of the document"},
+                    "framework": {"type": "string", "enum": ["cbuae_aml", "fatf_recommendations", "lbma_rgd"], "description": "Primary framework (default: cbuae_aml)"},
+                    "additional_frameworks": {"type": "string", "description": "Comma-separated additional frameworks to check (e.g. 'fatf_recommendations,lbma_rgd')"}
+                },
+                "required": ["document_text"]
+            }
+        },
+        {
+            "name": "list_gap_assessments",
+            "description": "List all previous gap assessments with scores and gap counts.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "compliance_frameworks",
+            "description": "List available compliance frameworks for gap assessment (CBUAE AML, FATF, LBMA).",
             "inputSchema": {"type": "object", "properties": {}}
         },
     ]
@@ -1207,6 +1407,319 @@ def handle_tool_call(req_id, params):
                 _tool_result(req_id, "\n".join(lines))
             else:
                 _tool_result(req_id, "No reports generated yet. Use 'generate_report' to create one.")
+
+        # ── PDF branded report handlers ───────────────────────────
+
+        elif tool_name == "generate_pdf_report":
+            report_type = args.get("report_type", "full")
+            monitor.start(f"Generating {report_type} PDF report")
+            result = generate_pdf_report(
+                report_type=report_type,
+                prepared_by=args.get("title", "Compliance Department"),
+            )
+            log_action(f"PDF report generated: {report_type}", "report", details={"type": report_type})
+            monitor.complete("Done")
+            _tool_result(req_id,
+                f"PDF report generated: {result['type']}\n"
+                f"Path: {result['html_path']}\n\n"
+                f"Open in browser and use Ctrl+P (or Cmd+P) to save as PDF.\n"
+                f"The report includes Finegold LLC branding and is print-optimized.")
+
+        # ── Client onboarding handlers ────────────────────────────
+
+        elif tool_name == "start_onboarding":
+            monitor.start(f"Creating onboarding for {args['client_name']}")
+            result = create_onboarding(
+                client_name=args["client_name"],
+                client_type=args.get("client_type", "individual"),
+                client_id=args.get("client_id"),
+            )
+            project_id = result["project"]["id"]
+            log_action(f"Onboarding started: {args['client_name']}", "kyc",
+                       client_id=args.get("client_id"), details={"project_id": project_id})
+            monitor.complete("Done")
+            _tool_result(req_id,
+                f"Onboarding project created: {project_id}\n"
+                f"Client: {result['client_name']} ({result['client_type']})\n"
+                f"Total steps: {result['total_steps']}\n"
+                f"Due: {result['due_date'][:10]}\n\n"
+                f"Use 'list_items' with tag 'onboarding' to see all steps.\n"
+                f"Complete each step with 'complete_item'.")
+
+        elif tool_name == "onboarding_status":
+            monitor.start("Checking onboarding progress")
+            result = get_onboarding_status(args["client_name"])
+            monitor.complete("Done")
+            lines = [
+                f"Onboarding: {result['client_name']}",
+                f"Progress: {result['progress_pct']:.0f}% ({result['completed']}/{result['total_steps']})",
+                f"Pending: {result['pending']} | Overdue: {result['overdue']}",
+            ]
+            pending_items = [i for i in result.get("items", []) if i["status"] in ("pending", "in_progress")]
+            if pending_items:
+                lines.append(f"\nPending steps ({len(pending_items)}):")
+                for s in pending_items[:10]:
+                    lines.append(f"  [{s['id']}] {s['title']}")
+            _tool_result(req_id, "\n".join(lines))
+
+        # ── Risk country handlers ─────────────────────────────────
+
+        elif tool_name == "check_country_risk":
+            monitor.start(f"Checking: {args['country']}")
+            result = check_country(args["country"])
+            monitor.complete("Done")
+            if result["risk_level"] == "standard":
+                _tool_result(req_id, f"{args['country']}: STANDARD RISK - not on any FATF or UAE high-risk list.")
+            else:
+                lines = [f"{args['country']}: {result['risk_level'].upper()} RISK"]
+                if result["blacklisted"]:
+                    lines.append("  FATF BLACKLISTED - Call for Action (counter-measures required)")
+                if result["greylisted"]:
+                    lines.append("  FATF GREYLISTED - Under Increased Monitoring (EDD required)")
+                if result["uae_high_risk"]:
+                    lines.append("  UAE/CBUAE HIGH RISK")
+                for d in result["details"]:
+                    lines.append(f"  List: {d['list']} | Since: {d.get('since', '')} | {d.get('reason', '')}")
+                _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "fatf_lists":
+            monitor.start("Loading FATF lists")
+            summary = get_fatf_summary()
+            lists = get_risk_lists()
+            monitor.complete("Done")
+            lines = [
+                f"FATF Risk Countries (Updated: {summary['last_updated']})",
+                f"Total high-risk: {summary['total']}",
+                f"\nBLACKLIST ({summary['blacklist_count']}) - Call for Action:",
+            ]
+            for c in lists["blacklist"]:
+                lines.append(f"  {c['country']} ({c['code']}) - {c.get('reason', '')}")
+            lines.append(f"\nGREYLIST ({summary['greylist_count']}) - Increased Monitoring:")
+            for c in lists["greylist"]:
+                lines.append(f"  {c['country']} ({c['code']}) - since {c.get('since', '')}")
+            lines.append(f"\nUAE/CBUAE Additional ({summary['uae_additional_count']}):")
+            for c in lists["uae_high_risk"]:
+                lines.append(f"  {c['country']} ({c['code']}) - {c.get('reason', '')}")
+            _tool_result(req_id, "\n".join(lines))
+
+        # ── Regulatory feed handlers ──────────────────────────────
+
+        elif tool_name == "fetch_regulatory_news":
+            source = args.get("source")
+            monitor.start(f"Fetching regulatory news{(' from ' + source) if source else ''}")
+            result = fetch_reg_updates(source)
+            monitor.complete("Done")
+            lines = [f"New articles: {result['new_articles']} | Total: {result['total_articles']}"]
+            if result.get("errors"):
+                lines.append(f"Errors: {', '.join(result['errors'])}")
+            if result.get("articles"):
+                lines.append("\nLatest articles:")
+                for a in result["articles"][:10]:
+                    lines.append(f"  [{a['id']}] [{a.get('source', '')}] {a['title']}")
+            _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "unread_regulatory_news":
+            monitor.start("Loading unread news")
+            articles = get_unread_articles()
+            monitor.complete("Done")
+            if articles:
+                lines = [f"Unread regulatory news ({len(articles)}):"]
+                for a in articles[:20]:
+                    lines.append(f"  [{a['id']}] [{a.get('source', '')}] {a['title']}")
+                    if a.get("link"):
+                        lines.append(f"    {a['link']}")
+                if len(articles) > 20:
+                    lines.append(f"  ... and {len(articles) - 20} more")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No unread regulatory news. Use 'fetch_regulatory_news' to check for updates.")
+
+        elif tool_name == "mark_news_read":
+            monitor.start("Marking as read")
+            article_id = args.get("article_id")
+            count = mark_articles_read(article_id if article_id else None)
+            monitor.complete("Done")
+            _tool_result(req_id, f"Marked {count} article(s) as read.")
+
+        elif tool_name == "regulatory_feed_status":
+            monitor.start("Checking feed status")
+            status = get_feed_status()
+            monitor.complete("Done")
+            lines = [
+                f"Total articles: {status['total_articles']}",
+                f"Unread: {status['unread']}",
+                "\nSources:",
+            ]
+            for key, name in status.get("sources", {}).items():
+                last = status.get("last_fetch", {}).get(key, "never")
+                if last != "never":
+                    last = last[:16]
+                lines.append(f"  {key}: {name} (last fetch: {last})")
+            _tool_result(req_id, "\n".join(lines))
+
+        # ── Compliance calendar handlers ──────────────────────────
+
+        elif tool_name == "upcoming_deadlines":
+            days = int(args.get("days", 90))
+            monitor.start(f"Loading deadlines ({days} days)")
+            deadlines = get_upcoming_deadlines(days)
+            monitor.complete("Done")
+            if deadlines:
+                lines = [f"Upcoming regulatory deadlines ({len(deadlines)} in next {days} days):"]
+                for d in deadlines:
+                    lines.append(
+                        f"  [{d['authority']}] {d['title']}\n"
+                        f"    Due: {d['due'][:10]} ({d['days_until']} days) | Priority: {d['priority']} | {d['recurrence']}"
+                    )
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, f"No deadlines in the next {days} days.")
+
+        elif tool_name == "load_compliance_calendar":
+            monitor.start("Loading calendar to workflow")
+            result = load_calendar_to_workflow()
+            log_action("Compliance calendar loaded", "calendar", details={"new_items": result["new_items_created"]})
+            monitor.complete("Done")
+            _tool_result(req_id,
+                f"Compliance calendar loaded.\n"
+                f"Total deadlines found: {result['total_deadlines']}\n"
+                f"New workflow items created: {result['new_items_created']}")
+
+        elif tool_name == "ongoing_obligations":
+            monitor.start("Loading obligations")
+            obligations = get_ongoing_obligations()
+            monitor.complete("Done")
+            lines = [f"Ongoing compliance obligations ({len(obligations)}):"]
+            for o in obligations:
+                lines.append(f"  [{o['priority'].upper()}] {o['title']} (Authority: {o['authority']})")
+            _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "full_calendar":
+            monitor.start("Loading full calendar")
+            cal = get_full_calendar()
+            monitor.complete("Done")
+            _tool_result(req_id, json.dumps(cal, indent=2, default=str))
+
+        # ── STR/SAR template handlers ─────────────────────────────
+
+        elif tool_name == "generate_str":
+            monitor.start(f"Generating STR for {args['client_name']}")
+            result = generate_str(
+                client_name=args["client_name"],
+                client_id=args.get("client_id", ""),
+                transaction_date=args.get("transaction_date", ""),
+                transaction_amount=args.get("transaction_amount", ""),
+                transaction_currency=args.get("transaction_currency", "AED"),
+                transaction_type=args.get("transaction_type", ""),
+                indicators=args.get("indicators", ""),
+                narrative=args.get("narrative", ""),
+                reporting_officer=args.get("reporting_officer", ""),
+                additional_parties=args.get("additional_parties", ""),
+            )
+            monitor.complete("Done")
+            lines = [
+                f"STR generated: {result['str_id']}",
+                f"JSON: {result['json_path']}",
+                f"Text: {result['text_path']}",
+                "",
+                "IMPORTANT: Review and submit via goAML portal within 24 hours of suspicion.",
+            ]
+            _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "list_str_reports":
+            monitor.start("Listing STR reports")
+            reports = list_str_reports()
+            monitor.complete("Done")
+            if reports:
+                lines = [f"STR/SAR Reports ({len(reports)}):"]
+                for r in reports:
+                    lines.append(f"  [{r['str_id']}] {r['client']} | Status: {r['status']} | {r['created_at'][:16]}")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No STR reports generated yet.")
+
+        elif tool_name == "str_indicators":
+            monitor.start("Loading indicators")
+            indicators = get_str_indicators()
+            monitor.complete("Done")
+            lines = ["STR Suspicion Indicators (CBUAE categories):"]
+            for code, desc in indicators.items():
+                lines.append(f"  {code}: {desc}")
+            _tool_result(req_id, "\n".join(lines))
+
+        # ── Web dashboard handlers ────────────────────────────────
+
+        elif tool_name == "start_web_dashboard":
+            port = int(args.get("port", 8080))
+            monitor.start(f"Starting dashboard on port {port}")
+            result = start_dashboard(port)
+            monitor.complete("Done")
+            _tool_result(req_id, f"{result}\nOpen in your browser to view the auto-refreshing compliance dashboard.")
+
+        elif tool_name == "generate_dashboard_html":
+            monitor.start("Generating static dashboard")
+            path = generate_static_dashboard()
+            monitor.complete("Done")
+            _tool_result(req_id, f"Static dashboard generated: {path}\nOpen in browser to view.")
+
+        # ── Gap assessment handlers ───────────────────────────────
+
+        elif tool_name == "gap_assessment":
+            doc_name = args.get("document_name", "Uploaded Document")
+            monitor.start(f"Assessing: {doc_name}")
+            result = run_gap_assessment(
+                document_text=args["document_text"],
+                document_name=doc_name,
+                framework=args.get("framework", "cbuae_aml"),
+                additional_frameworks=args.get("additional_frameworks", ""),
+            )
+            monitor.complete("Done")
+            lines = [
+                f"Gap Assessment: {result['assessment_id']}",
+                f"Document: {doc_name}",
+                f"Overall Score: {result['overall_score']}%",
+                f"",
+                f"Summary: {result['summary']['covered']} covered | {result['summary']['partial']} partial | {result['summary']['gaps']} gaps",
+                f"",
+            ]
+            for fw_key, fw_res in result["results"].items():
+                lines.append(f"--- {fw_res['framework']} ---")
+                for req in fw_res["requirements"]:
+                    icon = "OK" if req["status"] == "covered" else "PARTIAL" if req["status"] == "partial" else "GAP"
+                    lines.append(f"  [{icon}] {req['id']}: {req['title']} ({req['coverage_score']}%)")
+                lines.append("")
+
+            if result.get("priority_actions"):
+                lines.append("PRIORITY ACTIONS:")
+                for a in result["priority_actions"][:10]:
+                    lines.append(f"  [{a['priority'].upper()}] {a['requirement']}: {a['action']}")
+
+            lines.append(f"\nSaved: {result.get('path', '')}")
+            _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "list_gap_assessments":
+            monitor.start("Listing assessments")
+            assessments = list_gap_assessments()
+            monitor.complete("Done")
+            if assessments:
+                lines = [f"Gap Assessments ({len(assessments)}):"]
+                for a in assessments[:20]:
+                    lines.append(
+                        f"  [{a['assessment_id']}] {a['document_name']} | "
+                        f"Score: {a['overall_score']}% | Gaps: {a['gaps']} | {a['assessed_at'][:16]}"
+                    )
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No gap assessments yet. Use 'gap_assessment' to analyze a document.")
+
+        elif tool_name == "compliance_frameworks":
+            monitor.start("Loading frameworks")
+            frameworks = get_frameworks()
+            monitor.complete("Done")
+            lines = ["Available compliance frameworks:"]
+            for key, fw in frameworks.items():
+                lines.append(f"  {key}: {fw['name']} ({fw['authority']}) - {fw['requirements']} requirements")
+            _tool_result(req_id, "\n".join(lines))
 
         else:
             send_error(req_id, -32601, f"Unknown tool: {tool_name}")
