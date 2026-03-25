@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from config import TIMEZONE
 import re
 
 
@@ -89,7 +90,7 @@ class WorkflowManager:
     def _save(self):
         with open(self.db_file, "w") as f:
             json.dump(
-                {"items": self.items, "updated_at": datetime.now().isoformat()},
+                {"items": self.items, "updated_at": datetime.now(TIMEZONE).isoformat()},
                 f,
                 indent=2,
             )
@@ -115,7 +116,7 @@ class WorkflowManager:
         except ValueError:
             pass
 
-        now = datetime.now()
+        now = datetime.now(TIMEZONE)
 
         # Relative: "in 5m", "in 2 hours", etc.
         rel = re.match(
@@ -193,7 +194,7 @@ class WorkflowManager:
             raise ValueError(f"Invalid recurrence '{recurrence}'. Choose from: {list(RECURRENCE_TYPES)}")
 
         item_id = str(uuid.uuid4())[:8]
-        now_iso = datetime.now().isoformat()
+        now_iso = datetime.now(TIMEZONE).isoformat()
 
         item = {
             "id": item_id,
@@ -245,7 +246,7 @@ class WorkflowManager:
                 else:
                     item[key] = value
 
-        item["updated_at"] = datetime.now().isoformat()
+        item["updated_at"] = datetime.now(TIMEZONE).isoformat()
         self._save()
         return item
 
@@ -262,7 +263,7 @@ class WorkflowManager:
         if not item:
             raise ValueError(f"Item not found: {item_id}")
 
-        now = datetime.now()
+        now = datetime.now(TIMEZONE)
 
         # Handle recurrence
         next_item = None
@@ -303,7 +304,7 @@ class WorkflowManager:
         item["due"] = new_due
         item["status"] = "snoozed"
         item["snoozed_until"] = new_due
-        item["updated_at"] = datetime.now().isoformat()
+        item["updated_at"] = datetime.now(TIMEZONE).isoformat()
         self._save()
         return item
 
@@ -338,7 +339,7 @@ class WorkflowManager:
         )
 
         parent["follow_ups"].append(follow_up["id"])
-        parent["updated_at"] = datetime.now().isoformat()
+        parent["updated_at"] = datetime.now(TIMEZONE).isoformat()
         self._save()
 
         return follow_up
@@ -383,7 +384,7 @@ class WorkflowManager:
     def check_due(self) -> Dict[str, Any]:
         """Dashboard: overdue, due soon (30 min), due today, upcoming (7 days)."""
         self._update_overdue()
-        now = datetime.now()
+        now = datetime.now(TIMEZONE)
         today_end = now.replace(hour=23, minute=59, second=59)
         week_end = now + timedelta(days=7)
 
@@ -459,7 +460,7 @@ class WorkflowManager:
     # ── internal helpers ─────────────────────────────────────────
 
     def _update_overdue(self):
-        now = datetime.now()
+        now = datetime.now(TIMEZONE)
         changed = False
         for item in self.items.values():
             if item["status"] in ("pending", "in_progress", "waiting", "snoozed") and item.get("due"):
