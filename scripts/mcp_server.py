@@ -8,6 +8,7 @@ Workflow tools: create/list/get/update/complete/snooze/delete workflow items
                 (tasks, projects, meetings, documents, trainings, reports,
                  messages, follow-ups, reminders)
 Alert tools:    send_alert, check_workflow, workflow_dashboard, email_status
+Price tools:    check_prices, set_price_alert, list_price_alerts, delete_price_alert, price_history
 
 Run via stdio (MCP protocol):
   python scripts/mcp_server.py
@@ -23,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 from notebook_manager import NotebookLibrary
 from workflow_manager import WorkflowManager, ITEM_TYPES, PRIORITIES, STATUSES, RECURRENCE_TYPES
 from email_notifier import send_email, send_workflow_alert, get_status as email_status_info, is_configured as email_configured
+from price_tracker import (
+    fetch_prices, set_price_alert, list_price_alerts,
+    delete_price_alert, check_price_alerts, get_price_history
+)
 from monitor import ProgressMonitor
 
 
@@ -279,6 +284,55 @@ def handle_tools_list(req_id, _params):
             "name": "email_status",
             "description": "Check email notification configuration status.",
             "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Price tracking tools ─────────────────────────────────
+        {
+            "name": "check_prices",
+            "description": "Get current gold and silver prices (USD/oz) from Reuters/LSEG. "
+                           "Also shows the gold/silver ratio and checks any active price alerts.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "set_price_alert",
+            "description": "Set a price alert for gold or silver. Get emailed when price crosses your threshold.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "metal": {"type": "string", "enum": ["gold", "silver"], "description": "Which metal"},
+                    "condition": {"type": "string", "enum": ["above", "below"], "description": "Trigger when price goes above or below target"},
+                    "price": {"type": "number", "description": "Target price in USD/oz"},
+                    "notify": {"type": "boolean", "description": "Send email when triggered (default: true)"}
+                },
+                "required": ["metal", "condition", "price"]
+            }
+        },
+        {
+            "name": "list_price_alerts",
+            "description": "List all active price alerts for gold and silver.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "delete_price_alert",
+            "description": "Delete a price alert by ID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "alert_id": {"type": "string", "description": "The alert ID to delete"}
+                },
+                "required": ["alert_id"]
+            }
+        },
+        {
+            "name": "price_history",
+            "description": "Get price history for gold or silver over a number of days.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "metal": {"type": "string", "enum": ["gold", "silver"], "description": "Which metal (default: gold)"},
+                    "days": {"type": "number", "description": "Number of days of history (default: 7)"}
+                }
+            }
         },
     ]
     send_response({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
@@ -537,6 +591,87 @@ def handle_tool_call(req_id, params):
                     "For Gmail: use an App Password (not your regular password).\n"
                     "Generate at: https://myaccount.google.com/apppasswords\n\n"
                     "Multiple recipients: separate with commas in ALERT_EMAIL_TO.")
+
+        # ── Price tracking handlers ───────────────────────────────
+
+        elif tool_name == "check_prices":
+            monitor.start("Fetching gold & silver prices")
+            result = fetch_prices()
+            monitor.complete("Done")
+            if "error" in result:
+                _tool_result(req_id, f"Error: {result['error']}")
+            else:
+                gold = result["gold"]
+                silver = result["silver"]
+                lines = [
+                    f"Gold (XAU):   ${gold['price']:,.2f} USD/oz",
+                    f"Silver (XAG): ${silver['price']:,.2f} USD/oz",
+                    f"Gold/Silver Ratio: {result['gold_silver_ratio']:.1f}",
+                    f"Source: {result['source']}",
+                    f"Time: {result['timestamp'][:19]}",
+                ]
+                # Check alerts
+                triggered = check_price_alerts(result)
+                if triggered:
+                    lines.append("")
+                    lines.append("ALERTS TRIGGERED:")
+                    for a in triggered:
+                        lines.append(f"  {a['metal'].upper()} {a['condition']} ${a['target_price']:.2f} (current: ${a['triggered_price']:.2f})")
+                _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "set_price_alert":
+            monitor.start("Setting price alert")
+            alert = set_price_alert(
+                metal=args["metal"],
+                condition=args["condition"],
+                price=float(args["price"]),
+                notify=args.get("notify", True),
+            )
+            monitor.complete("Done")
+            _tool_result(req_id,
+                f"Price alert set: {alert['metal'].upper()} {alert['condition']} ${alert['target_price']:.2f}\n"
+                f"ID: {alert['id']}\n"
+                f"Email notification: {'ON' if alert['notify'] else 'OFF'}")
+
+        elif tool_name == "list_price_alerts":
+            monitor.start("Loading price alerts")
+            alerts = list_price_alerts()
+            monitor.complete("Done")
+            if alerts:
+                lines = []
+                for a in alerts:
+                    status = "TRIGGERED" if a["triggered"] else "active"
+                    lines.append(
+                        f"[{a['id']}] {a['metal'].upper()} {a['condition']} "
+                        f"${a['target_price']:.2f} - {status}"
+                    )
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No price alerts set.")
+
+        elif tool_name == "delete_price_alert":
+            monitor.start("Deleting price alert")
+            deleted = delete_price_alert(args["alert_id"])
+            monitor.complete("Done")
+            _tool_result(req_id,
+                f"Alert {args['alert_id']} deleted." if deleted
+                else f"Alert not found: {args['alert_id']}")
+
+        elif tool_name == "price_history":
+            monitor.start("Loading price history")
+            metal = args.get("metal", "gold")
+            days = int(args.get("days", 7))
+            history = get_price_history(metal, days)
+            monitor.complete("Done")
+            if history:
+                lines = [f"{metal.upper()} price history (last {days} days):"]
+                for h in history[-20:]:  # Last 20 entries
+                    lines.append(f"  {h['timestamp'][:16]} - ${h[metal]:,.2f}")
+                if len(history) > 20:
+                    lines.insert(1, f"  (showing last 20 of {len(history)} entries)")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, f"No price history for {metal}. Run 'check_prices' first to start tracking.")
 
         else:
             send_error(req_id, -32601, f"Unknown tool: {tool_name}")

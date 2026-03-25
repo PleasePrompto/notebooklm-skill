@@ -168,10 +168,25 @@ def check_and_alert(dry_run: bool = False) -> Dict[str, Any]:
     if stale and not dry_run:
         _save_notified(notified)
 
+    # Check price alerts too
+    price_alerts_triggered = []
+    try:
+        from price_tracker import fetch_prices, check_price_alerts
+        prices = fetch_prices()
+        if "error" not in prices:
+            triggered = check_price_alerts(prices)
+            for a in triggered:
+                _log(f"PRICE ALERT: {a['metal'].upper()} {a['condition']} ${a['target_price']:.2f} (now ${a['triggered_price']:.2f})")
+                price_alerts_triggered.append(a)
+                alerts_sent += 1
+    except Exception as e:
+        _log(f"Price check skipped: {e}")
+
     summary = {
         "checked": len(items),
         "alerted": alerts_sent,
         "alerts": alerts_detail,
+        "price_alerts": price_alerts_triggered,
         "checked_at": now.isoformat(),
         "dry_run": dry_run,
     }
