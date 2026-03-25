@@ -28,6 +28,17 @@ from price_tracker import (
     fetch_prices, set_price_alert, list_price_alerts,
     delete_price_alert, check_price_alerts, get_price_history
 )
+from currency_tracker import (
+    fetch_rates, convert as convert_currency, set_rate_alert,
+    list_rate_alerts, delete_rate_alert, check_rate_alerts, get_rate_history
+)
+from sanctions_checker import (
+    download_list as download_sanctions, download_all_lists as download_all_sanctions,
+    search_sanctions, batch_screen, get_list_status as sanctions_status
+)
+from client_database import ClientDatabase, RISK_RATINGS, KYC_STATUSES, CLIENT_TYPES
+from audit_trail import log_action, query_audit, verify_audit, audit_stats
+from report_generator import generate_compliance_report, list_reports
 from monitor import ProgressMonitor
 
 
@@ -333,6 +344,227 @@ def handle_tools_list(req_id, _params):
                     "days": {"type": "number", "description": "Number of days of history (default: 7)"}
                 }
             }
+        },
+
+        # ── Currency exchange rate tools ─────────────────────────
+        {
+            "name": "check_rates",
+            "description": "Get current exchange rates for AED, EUR, GBP, CHF, SAR and more. Base currency defaults to USD.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "base": {"type": "string", "description": "Base currency (default: USD)"},
+                    "currencies": {"type": "string", "description": "Comma-separated target currencies (default: AED,EUR,GBP,CHF,SAR,INR,CNY)"}
+                }
+            }
+        },
+        {
+            "name": "convert_currency",
+            "description": "Convert an amount between currencies (e.g. 1000 AED to USD).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number", "description": "Amount to convert"},
+                    "from": {"type": "string", "description": "Source currency code (e.g. AED)"},
+                    "to": {"type": "string", "description": "Target currency code (e.g. USD)"}
+                },
+                "required": ["amount", "from", "to"]
+            }
+        },
+        {
+            "name": "set_rate_alert",
+            "description": "Set an exchange rate alert. Get emailed when a rate crosses your threshold.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "currency": {"type": "string", "description": "Currency to watch (e.g. EUR)"},
+                    "condition": {"type": "string", "enum": ["above", "below"], "description": "Trigger when rate goes above or below"},
+                    "rate": {"type": "number", "description": "Target rate"},
+                    "base": {"type": "string", "description": "Base currency (default: USD)"}
+                },
+                "required": ["currency", "condition", "rate"]
+            }
+        },
+        {
+            "name": "rate_history",
+            "description": "Get exchange rate history for a currency over N days.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "currency": {"type": "string", "description": "Currency code (default: AED)"},
+                    "days": {"type": "number", "description": "Number of days (default: 7)"}
+                }
+            }
+        },
+
+        # ── Sanctions screening tools ────────────────────────────
+        {
+            "name": "screen_name",
+            "description": "Screen a name against UN, EU, UK, UAE, and OFAC sanctions lists. Uses fuzzy matching for transliteration variants.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name to screen"},
+                    "sources": {"type": "string", "description": "Comma-separated sources to check (default: all). Options: UN,EU,UK,OFAC,UAE"}
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "batch_screen",
+            "description": "Screen multiple names at once against sanctions lists.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "names": {"type": "string", "description": "Comma-separated names to screen"}
+                },
+                "required": ["names"]
+            }
+        },
+        {
+            "name": "download_sanctions_lists",
+            "description": "Download/update sanctions lists from official sources (UN, EU, UK, OFAC). Run this periodically to keep lists current.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "Specific list to download (UN/EU/UK/OFAC/UAE) or leave empty for all"}
+                }
+            }
+        },
+        {
+            "name": "sanctions_list_status",
+            "description": "Check which sanctions lists are downloaded and when they were last updated.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Client database tools ────────────────────────────────
+        {
+            "name": "add_client",
+            "description": "Add a new client to the database with KYC/AML tracking. Auto-sets review date based on risk rating.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Client full name"},
+                    "client_type": {"type": "string", "enum": list(CLIENT_TYPES), "description": "Client type (default: individual)"},
+                    "risk_rating": {"type": "string", "enum": list(RISK_RATINGS), "description": "Risk rating (default: medium)"},
+                    "kyc_status": {"type": "string", "enum": list(KYC_STATUSES), "description": "KYC status (default: pending)"},
+                    "nationality": {"type": "string", "description": "Client nationality"},
+                    "id_number": {"type": "string", "description": "ID/passport number"},
+                    "email": {"type": "string", "description": "Client email"},
+                    "phone": {"type": "string", "description": "Client phone"},
+                    "notes": {"type": "string", "description": "Additional notes"},
+                    "tags": {"type": "string", "description": "Comma-separated tags"}
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "search_clients",
+            "description": "Search clients by name, risk rating, KYC status, type, or tag. Use review_due=true to find clients needing KYC review.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search by name/notes/tags"},
+                    "risk_rating": {"type": "string", "enum": list(RISK_RATINGS), "description": "Filter by risk"},
+                    "kyc_status": {"type": "string", "enum": list(KYC_STATUSES), "description": "Filter by KYC status"},
+                    "client_type": {"type": "string", "enum": list(CLIENT_TYPES), "description": "Filter by type"},
+                    "review_due": {"type": "boolean", "description": "Only show clients with overdue reviews"}
+                }
+            }
+        },
+        {
+            "name": "get_client",
+            "description": "Get full details of a client including screening history.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "client_id": {"type": "string", "description": "Client ID"}
+                },
+                "required": ["client_id"]
+            }
+        },
+        {
+            "name": "update_client",
+            "description": "Update client details (risk rating, KYC status, notes, etc.).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "client_id": {"type": "string", "description": "Client ID"},
+                    "name": {"type": "string"},
+                    "risk_rating": {"type": "string", "enum": list(RISK_RATINGS)},
+                    "kyc_status": {"type": "string", "enum": list(KYC_STATUSES)},
+                    "nationality": {"type": "string"},
+                    "notes": {"type": "string"},
+                    "tags": {"type": "string", "description": "Comma-separated tags"},
+                    "review_date": {"type": "string", "description": "Next review date (ISO-8601)"}
+                },
+                "required": ["client_id"]
+            }
+        },
+        {
+            "name": "screen_client",
+            "description": "Run a sanctions screening on an existing client and store results.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "client_id": {"type": "string", "description": "Client ID to screen"}
+                },
+                "required": ["client_id"]
+            }
+        },
+        {
+            "name": "client_reviews_due",
+            "description": "List clients with overdue or upcoming KYC reviews.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "client_stats",
+            "description": "Client database statistics: counts by risk, KYC status, type.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Audit trail tools ────────────────────────────────────
+        {
+            "name": "audit_log",
+            "description": "Query the audit trail. Filter by category, client, action, or date range.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "Filter: screening, kyc, client, alert, report, sanctions, etc."},
+                    "client_id": {"type": "string", "description": "Filter by client ID"},
+                    "action": {"type": "string", "description": "Search in action text"},
+                    "start_date": {"type": "string", "description": "Start date (ISO-8601)"},
+                    "end_date": {"type": "string", "description": "End date (ISO-8601)"},
+                    "limit": {"type": "number", "description": "Max entries to return (default: 50)"}
+                }
+            }
+        },
+        {
+            "name": "audit_verify",
+            "description": "Verify the audit trail integrity (hash chain validation). Detects tampering.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "audit_summary",
+            "description": "Audit trail statistics: total entries, by category, by result.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+
+        # ── Report generator tools ───────────────────────────────
+        {
+            "name": "generate_report",
+            "description": "Generate a full compliance dashboard report. Aggregates workflow, clients, sanctions, prices, rates, and audit data.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "format": {"type": "string", "enum": ["text", "json", "html", "both"], "description": "Report format (default: text). 'both' generates text + HTML."}
+                }
+            }
+        },
+        {
+            "name": "list_reports",
+            "description": "List all previously generated compliance reports.",
+            "inputSchema": {"type": "object", "properties": {}}
         },
     ]
     send_response({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
@@ -672,6 +904,309 @@ def handle_tool_call(req_id, params):
                 _tool_result(req_id, "\n".join(lines))
             else:
                 _tool_result(req_id, f"No price history for {metal}. Run 'check_prices' first to start tracking.")
+
+        # ── Currency exchange handlers ────────────────────────────
+
+        elif tool_name == "check_rates":
+            monitor.start("Fetching exchange rates")
+            base = args.get("base", "USD")
+            currencies = [c.strip() for c in args.get("currencies", "").split(",") if c.strip()] or None
+            result = fetch_rates(base, currencies)
+            if "error" in result:
+                _tool_result(req_id, f"Error: {result['error']}")
+            else:
+                lines = [f"Exchange Rates (Base: {result['base']})"]
+                for curr, rate in sorted(result["rates"].items()):
+                    lines.append(f"  {curr}: {rate}")
+                lines.append(f"Source: {result['source']}")
+                lines.append(f"Time: {result['timestamp'][:19]}")
+                triggered = check_rate_alerts(result)
+                if triggered:
+                    lines.append("\nRATE ALERTS TRIGGERED:")
+                    for a in triggered:
+                        lines.append(f"  {a['base']}/{a['currency']} {a['condition']} {a['target_rate']} (now: {a['triggered_rate']})")
+                _tool_result(req_id, "\n".join(lines))
+            log_action("check_rates", "rate_check", details={"base": base})
+            monitor.complete("Done")
+
+        elif tool_name == "convert_currency":
+            monitor.start("Converting currency")
+            result = convert_currency(float(args["amount"]), args["from"], args["to"])
+            monitor.complete("Done")
+            if "error" in result:
+                _tool_result(req_id, f"Error: {result['error']}")
+            else:
+                _tool_result(req_id,
+                    f"{result['amount']:,.2f} {result['from']} = {result['converted']:,.2f} {result['to']}\n"
+                    f"Rate: {result['rate']}\nSource: {result['source']}")
+
+        elif tool_name == "set_rate_alert":
+            monitor.start("Setting rate alert")
+            alert = set_rate_alert(args["currency"], args["condition"], float(args["rate"]), args.get("base", "USD"))
+            monitor.complete("Done")
+            _tool_result(req_id, f"Rate alert set: {alert['base']}/{alert['currency']} {alert['condition']} {alert['target_rate']}\nID: {alert['id']}")
+
+        elif tool_name == "rate_history":
+            monitor.start("Loading rate history")
+            currency = args.get("currency", "AED")
+            days = int(args.get("days", 7))
+            history = get_rate_history(currency, days)
+            monitor.complete("Done")
+            if history:
+                lines = [f"{currency} rate history (last {days} days):"]
+                for h in history[-20:]:
+                    lines.append(f"  {h['timestamp'][:16]} - {h['rate']} (base: {h['base']})")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, f"No rate history for {currency}. Run 'check_rates' first.")
+
+        # ── Sanctions screening handlers ─────────────────────────
+
+        elif tool_name == "screen_name":
+            monitor.start(f"Screening: {args['name']}")
+            sources = [s.strip() for s in args.get("sources", "").split(",") if s.strip()] or None
+            result = search_sanctions(args["name"], sources)
+            log_action(f"Screen: {args['name']}", "screening", details={"matches": result["total_matches"]})
+            monitor.complete(f"Found {result['total_matches']} matches")
+            if result["total_matches"] > 0:
+                lines = [f"MATCHES FOUND: {result['total_matches']} for '{args['name']}'"]
+                for m in result["matches"]:
+                    lines.append(f"  [{m['source']}] {m['name']} (score: {m['match_score']}, type: {m['type']})")
+                    if m.get("alias_matched"):
+                        lines.append(f"    Alias matched: {m['alias_matched']}")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                checked = ", ".join(s["source"] for s in result["sources_checked"])
+                _tool_result(req_id, f"CLEAR: No matches found for '{args['name']}'\nSources checked: {checked}")
+
+        elif tool_name == "batch_screen":
+            monitor.start("Batch screening")
+            names = [n.strip() for n in args["names"].split(",") if n.strip()]
+            result = batch_screen(names)
+            log_action(f"Batch screen: {len(names)} names", "screening", details={"flagged": result["total_flagged"]})
+            monitor.complete(f"Screened {result['total_screened']}, flagged {result['total_flagged']}")
+            lines = [f"Screened: {result['total_screened']} | Flagged: {result['total_flagged']}"]
+            if result["flagged"]:
+                lines.append("\nFLAGGED:")
+                for f in result["flagged"]:
+                    lines.append(f"  {f['name']} - {f['matches']} match(es)")
+            if result["clean"]:
+                lines.append(f"\nCLEAR: {', '.join(result['clean'])}")
+            _tool_result(req_id, "\n".join(lines))
+
+        elif tool_name == "download_sanctions_lists":
+            source = args.get("source", "").strip()
+            if source:
+                monitor.start(f"Downloading {source} sanctions list")
+                result = download_sanctions(source.upper())
+                monitor.complete("Done")
+                if "error" in result:
+                    _tool_result(req_id, f"Error: {result['error']}")
+                else:
+                    _tool_result(req_id, f"Downloaded: {result['name']}\nEntries: {result.get('count', 0)}\nUpdated: {result.get('updated_at', '')}")
+            else:
+                monitor.start("Downloading all sanctions lists")
+                results = download_all_sanctions()
+                monitor.complete("Done")
+                lines = ["Sanctions lists update:"]
+                for key, r in results.items():
+                    if "error" in r:
+                        lines.append(f"  {key}: ERROR - {r['error']}")
+                    else:
+                        lines.append(f"  {key}: {r.get('count', 0)} entries ({r.get('name', '')})")
+                _tool_result(req_id, "\n".join(lines))
+            log_action("Download sanctions lists", "sanctions")
+
+        elif tool_name == "sanctions_list_status":
+            monitor.start("Checking sanctions lists")
+            status = sanctions_status()
+            monitor.complete("Done")
+            lines = ["Sanctions Lists Status:"]
+            for key, info in status.items():
+                if info.get("downloaded"):
+                    lines.append(f"  {key}: {info['entries']} entries (updated: {info['updated_at'][:16]})")
+                else:
+                    lines.append(f"  {key}: Not downloaded")
+            _tool_result(req_id, "\n".join(lines))
+
+        # ── Client database handlers ─────────────────────────────
+
+        elif tool_name == "add_client":
+            monitor.start("Adding client")
+            db = ClientDatabase()
+            tags = [t.strip() for t in args.get("tags", "").split(",") if t.strip()] if args.get("tags") else None
+            client = db.add_client(
+                name=args["name"],
+                client_type=args.get("client_type", "individual"),
+                risk_rating=args.get("risk_rating", "medium"),
+                kyc_status=args.get("kyc_status", "pending"),
+                nationality=args.get("nationality", ""),
+                id_number=args.get("id_number", ""),
+                email=args.get("email", ""),
+                phone=args.get("phone", ""),
+                notes=args.get("notes", ""),
+                tags=tags,
+            )
+            log_action(f"Add client: {args['name']}", "client", client_id=client["id"])
+            monitor.complete(f"Client {client['id']} added")
+            _tool_result(req_id, json.dumps(client, indent=2))
+
+        elif tool_name == "search_clients":
+            monitor.start("Searching clients")
+            db = ClientDatabase()
+            clients = db.search_clients(
+                query=args.get("query"),
+                risk_rating=args.get("risk_rating"),
+                kyc_status=args.get("kyc_status"),
+                client_type=args.get("client_type"),
+                review_due=args.get("review_due", False),
+            )
+            monitor.complete(f"Found {len(clients)} clients")
+            if clients:
+                lines = []
+                for c in clients:
+                    lines.append(f"[{c['id']}] {c['name']} | {c['risk_rating']:10s} | KYC: {c['kyc_status']} | Review: {(c.get('review_date') or 'N/A')[:10]}")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No clients found.")
+
+        elif tool_name == "get_client":
+            monitor.start("Loading client")
+            db = ClientDatabase()
+            client = db.get_client(args["client_id"])
+            monitor.complete("Done")
+            _tool_result(req_id, json.dumps(client, indent=2) if client else f"Client not found: {args['client_id']}")
+
+        elif tool_name == "update_client":
+            monitor.start("Updating client")
+            db = ClientDatabase()
+            updates = {}
+            for field in ("name", "risk_rating", "kyc_status", "nationality", "notes", "review_date"):
+                if field in args:
+                    updates[field] = args[field]
+            if "tags" in args:
+                updates["tags"] = [t.strip() for t in args["tags"].split(",") if t.strip()]
+            client = db.update_client(args["client_id"], updates)
+            log_action(f"Update client", "client", client_id=args["client_id"], details=updates)
+            monitor.complete("Done")
+            _tool_result(req_id, json.dumps(client, indent=2))
+
+        elif tool_name == "screen_client":
+            monitor.start("Screening client")
+            db = ClientDatabase()
+            client = db.get_client(args["client_id"])
+            if not client:
+                send_error(req_id, -32602, f"Client not found: {args['client_id']}")
+                return
+            result = search_sanctions(client["name"])
+            db.add_screening_result(args["client_id"], result)
+            log_action(f"Screen client: {client['name']}", "screening", client_id=args["client_id"],
+                       details={"matches": result["total_matches"]})
+            monitor.complete(f"{result['total_matches']} matches")
+            if result["total_matches"] > 0:
+                lines = [f"MATCHES for {client['name']}: {result['total_matches']}"]
+                for m in result["matches"]:
+                    lines.append(f"  [{m['source']}] {m['name']} (score: {m['match_score']})")
+                lines.append("\nClient risk rating auto-updated to HIGH. KYC set to UNDER_REVIEW.")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, f"CLEAR: {client['name']} - no sanctions matches found.")
+
+        elif tool_name == "client_reviews_due":
+            monitor.start("Checking client reviews")
+            db = ClientDatabase()
+            reviews = db.get_review_due()
+            monitor.complete("Done")
+            parts = []
+            if reviews["overdue"]:
+                lines = [f"OVERDUE REVIEWS ({len(reviews['overdue'])}):" ]
+                for c in reviews["overdue"]:
+                    lines.append(f"  [{c['id']}] {c['name']} | Risk: {c['risk_rating']} | Due: {(c.get('review_date') or '')[:10]}")
+                parts.append("\n".join(lines))
+            if reviews["upcoming"]:
+                lines = [f"UPCOMING REVIEWS ({len(reviews['upcoming'])}):" ]
+                for c in reviews["upcoming"]:
+                    lines.append(f"  [{c['id']}] {c['name']} | Risk: {c['risk_rating']} | Due: {(c.get('review_date') or '')[:10]}")
+                parts.append("\n".join(lines))
+            if not parts:
+                parts.append("No reviews due.")
+            _tool_result(req_id, "\n\n".join(parts))
+
+        elif tool_name == "client_stats":
+            monitor.start("Loading client stats")
+            db = ClientDatabase()
+            stats = db.get_stats()
+            monitor.complete("Done")
+            _tool_result(req_id, json.dumps(stats, indent=2))
+
+        # ── Audit trail handlers ─────────────────────────────────
+
+        elif tool_name == "audit_log":
+            monitor.start("Querying audit trail")
+            entries = query_audit(
+                category=args.get("category"),
+                client_id=args.get("client_id"),
+                action=args.get("action"),
+                start_date=args.get("start_date"),
+                end_date=args.get("end_date"),
+                limit=int(args.get("limit", 50)),
+            )
+            monitor.complete(f"Found {len(entries)} entries")
+            if entries:
+                lines = []
+                for e in entries:
+                    lines.append(f"[{e['id']}] {e['timestamp'][:19]} | {e['category']:12s} | {e['action']}")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No audit entries found.")
+
+        elif tool_name == "audit_verify":
+            monitor.start("Verifying audit trail integrity")
+            result = verify_audit()
+            monitor.complete("Done")
+            if result["valid"]:
+                _tool_result(req_id, f"INTEGRITY OK: {result['entries_checked']} entries verified. Hash chain intact.")
+            else:
+                _tool_result(req_id, f"INTEGRITY FAILED: {len(result['errors'])} error(s) found.\n" + json.dumps(result["errors"], indent=2))
+
+        elif tool_name == "audit_summary":
+            monitor.start("Loading audit stats")
+            stats = audit_stats()
+            monitor.complete("Done")
+            _tool_result(req_id, json.dumps(stats, indent=2))
+
+        # ── Report generator handlers ────────────────────────────
+
+        elif tool_name == "generate_report":
+            fmt = args.get("format", "text")
+            monitor.start(f"Generating {fmt} report")
+            report = generate_compliance_report(fmt)
+            log_action("Generate compliance report", "report", details={"format": fmt})
+            monitor.complete("Done")
+            if fmt == "json":
+                _tool_result(req_id, json.dumps(report, indent=2))
+            else:
+                text = report.get("text", json.dumps(report["sections"], indent=2))
+                paths = []
+                if report.get("json_path"):
+                    paths.append(f"JSON: {report['json_path']}")
+                if report.get("text_path"):
+                    paths.append(f"Text: {report['text_path']}")
+                if report.get("html_path"):
+                    paths.append(f"HTML: {report['html_path']}")
+                _tool_result(req_id, text + "\n\nSaved to:\n" + "\n".join(paths))
+
+        elif tool_name == "list_reports":
+            monitor.start("Listing reports")
+            reports = list_reports()
+            monitor.complete("Done")
+            if reports:
+                lines = ["Generated reports:"]
+                for r in reports[:20]:
+                    lines.append(f"  [{r['report_id']}] {r['title']} ({r['generated_at'][:16]})")
+                _tool_result(req_id, "\n".join(lines))
+            else:
+                _tool_result(req_id, "No reports generated yet. Use 'generate_report' to create one.")
 
         else:
             send_error(req_id, -32601, f"Unknown tool: {tool_name}")
