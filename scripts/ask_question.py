@@ -107,6 +107,19 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
 
+        # Snapshot existing responses before submitting so we can
+        # distinguish them from the new answer later (#25)
+        existing_responses = set()
+        for selector in RESPONSE_SELECTORS:
+            try:
+                elements = page.query_selector_all(selector)
+                for el in elements:
+                    text = el.inner_text().strip()
+                    if text:
+                        existing_responses.add(text)
+            except:
+                continue
+
         # Submit
         print("  📤 Submitting...")
         page.keyboard.press("Enter")
@@ -114,13 +127,23 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Small pause
         StealthUtils.random_delay(500, 1500)
 
-        # Wait for response (MCP approach: poll for stable text)
+        # Wait for response - scan from newest to oldest and pick the
+        # first candidate that was not already present before submission
         print("  ⏳ Waiting for answer...")
+
+        # Transient placeholders that NotebookLM shows while generating
+        _PLACEHOLDERS = {
+            "reading through pages",
+            "finding key words",
+            "analyzing sources",
+            "searching sources",
+            "generating response",
+        }
 
         answer = None
         stable_count = 0
         last_text = None
-        deadline = time.time() + 120  # 2 minutes timeout
+        deadline = time.time() + 300  # 5 minutes timeout for large notebooks
 
         while time.time() < deadline:
             # Check if NotebookLM is still thinking (most reliable indicator)
@@ -132,29 +155,43 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             except:
                 pass
 
-            # Try to find response with MCP selectors
+            # Try to find the new response with MCP selectors
+            candidate = None
             for selector in RESPONSE_SELECTORS:
                 try:
                     elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
-
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
+                    if not elements:
+                        continue
+                    # Scan from newest to oldest
+                    for el in reversed(elements):
+                        text = el.inner_text().strip()
+                        if not text:
+                            continue
+                        # Skip transient placeholders
+                        if text.lower() in _PLACEHOLDERS:
+                            continue
+                        # Skip responses that existed before we submitted
+                        if text in existing_responses:
+                            continue
+                        # Skip the user's own question echoed back
+                        if text == question:
+                            continue
+                        candidate = text
+                        break
                 except:
                     continue
+                if candidate:
+                    break
 
-            if answer:
-                break
+            if candidate:
+                if candidate == last_text:
+                    stable_count += 1
+                    if stable_count >= 3:  # Stable for 3 polls
+                        answer = candidate
+                        break
+                else:
+                    stable_count = 0
+                    last_text = candidate
 
             time.sleep(1)
 
