@@ -400,6 +400,8 @@ class WorkflowManager:
                 continue
 
             due_dt = datetime.fromisoformat(item["due"])
+            if not due_dt.tzinfo:
+                due_dt = due_dt.replace(tzinfo=TIMEZONE)
 
             if due_dt <= now:
                 overdue.append(item)

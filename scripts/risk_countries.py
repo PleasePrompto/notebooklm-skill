@@ -72,6 +72,15 @@ ALL_HIGH_RISK_NAMES = set(
 )
 
 
+def _match_country(country_lower: str, country_upper: str, entry: Dict) -> bool:
+    """Flexible country matching: exact, code, or substring."""
+    entry_lower = entry["country"].lower()
+    return (country_lower == entry_lower
+            or country_upper == entry["code"]
+            or country_lower in entry_lower
+            or entry_lower.startswith(country_lower))
+
+
 def check_country(country: str) -> Dict[str, Any]:
     """Check if a country is on any high-risk list."""
     country_lower = country.lower().strip()
@@ -87,20 +96,20 @@ def check_country(country: str) -> Dict[str, Any]:
     }
 
     for c in BLACKLIST:
-        if country_lower == c["country"].lower() or country_upper == c["code"]:
+        if _match_country(country_lower, country_upper, c):
             result["blacklisted"] = True
             result["risk_level"] = "prohibited"
             result["details"].append({"list": "FATF Blacklist", **c})
 
     for c in GREYLIST:
-        if country_lower == c["country"].lower() or country_upper == c["code"]:
+        if _match_country(country_lower, country_upper, c):
             result["greylisted"] = True
             if result["risk_level"] == "standard":
                 result["risk_level"] = "high"
             result["details"].append({"list": "FATF Greylist", **c})
 
     for c in UAE_HIGH_RISK:
-        if country_lower == c["country"].lower() or country_upper == c["code"]:
+        if _match_country(country_lower, country_upper, c):
             result["uae_high_risk"] = True
             if result["risk_level"] == "standard":
                 result["risk_level"] = "high"
