@@ -10,4 +10,4 @@ patchright==1.55.2
 python-dotenv==1.0.0
 
 # Asana API client
-asana==5.0.11
+asana>=5.0.0
