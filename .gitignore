@@ -9,9 +9,8 @@ data/
 data/*
 data/**/*
 
-# Claude-specific
-.claude/
-*.claude
+# Claude-specific (only ignore user data, not hooks/settings)
+.claude/skills/
 
 # Python
 __pycache__/
@@ -24,8 +23,9 @@ scripts/*.pyc
 
 # Environment
 .env
-*.env
-.env.*
+.env.local
+.env.production
+!.env.example
 
 # Browser/Auth state (if accidentally placed outside data/)
 browser_state/

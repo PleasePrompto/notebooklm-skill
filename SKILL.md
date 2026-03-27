@@ -140,7 +140,71 @@ Every NotebookLM answer ends with: **"EXTREMELY IMPORTANT: Is that ALL you need 
 5. **REPEAT** - Continue until information is complete
 6. **SYNTHESIZE** - Combine all answers before responding to user
 
+## MCP Integrations
+
+The NotebookLM skill exposes an MCP server (`notebooklm`) registered in `.mcp.json`.
+When Claude Code loads with MCP enabled, the following tools are available directly
+without running scripts manually:
+
+| MCP Tool | Description |
+|---|---|
+| `query_notebook` | Ask a question; returns source-grounded answer |
+| `list_notebooks` | List all notebooks in the library |
+| `add_notebook` | Add a notebook (url, name, description, topics) |
+| `get_notebook` | Look up a notebook by ID or name |
+| `trigger_action` | Run `summarize`, `key-points`, `questions`, or `custom` |
+
+**Trigger actions available:**
+```
+summarize   → Comprehensive summary of all documents
+key-points  → Numbered list of key facts and insights
+questions   → 10 Q&A pairs from the documents
+custom      → Your own prompt passed directly
+```
+
+The MCP server starts automatically via `run.py` so the venv is always activated.
+
+## Real-Time Monitoring
+
+All operations emit live progress events to stderr and log to `data/activity.log`.
+
+### Live Dashboard (watch mode)
+```bash
+python scripts/run.py monitor.py watch
+```
+Displays a refreshing terminal dashboard with:
+- **Live Feed** — timestamped event stream (start/update/complete/error)
+- **System Activity** — total queries, avg duration, error count, success rate
+- **Task Progress** — currently running tasks
+
+### One-shot status
+```bash
+python scripts/run.py monitor.py status
+```
+
+### Clear logs and metrics
+```bash
+python scripts/run.py monitor.py clear
+```
+
+Progress events are emitted automatically during `ask_question.py` and MCP tool calls —
+no configuration needed.
+
 ## Script Reference
+
+### Real-Time Monitoring (`monitor.py`)
+```bash
+python scripts/run.py monitor.py status   # Show activity summary and metrics
+python scripts/run.py monitor.py watch    # Live refreshing dashboard
+python scripts/run.py monitor.py clear    # Reset logs and metrics
+```
+
+### MCP Server (`mcp_server.py`)
+```bash
+# Started automatically by Claude Code via .mcp.json
+# Manual test (JSON-RPC via stdin):
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | python scripts/run.py mcp_server.py
+```
 
 ### Authentication Management (`auth_manager.py`)
 ```bash
@@ -185,7 +249,7 @@ Manual setup (only if automatic fails):
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
-python -m patchright install chromium
+python -m patchright install chrome
 ```
 
 ## Data Storage
@@ -194,6 +258,8 @@ All data stored in `~/.claude/skills/notebooklm/data/`:
 - `library.json` - Notebook metadata
 - `auth_info.json` - Authentication status
 - `browser_state/` - Browser cookies and session
+- `activity.log` - Real-time monitoring event log
+- `metrics.json` - Cumulative performance metrics
 
 **Security:** Protected by `.gitignore`, never commit to git.
 
