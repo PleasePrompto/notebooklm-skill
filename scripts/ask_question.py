@@ -24,6 +24,7 @@ from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
 from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
 from browser_utils import BrowserFactory, StealthUtils
+from monitor import ProgressMonitor
 
 
 # Follow-up reminder (adapted from MCP server for stateless operation)
@@ -50,13 +51,13 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         Answer text from NotebookLM
     """
     auth = AuthManager()
+    monitor = ProgressMonitor("ask_notebooklm")
 
     if not auth.is_authenticated():
         print("⚠️ Not authenticated. Run: python auth_manager.py setup")
         return None
 
-    print(f"💬 Asking: {question}")
-    print(f"📚 Notebook: {notebook_url}")
+    monitor.start(f"Asking: {question[:60]}{'...' if len(question) > 60 else ''}")
 
     playwright = None
     context = None
@@ -66,6 +67,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         playwright = sync_playwright().start()
 
         # Launch persistent browser context using factory
+        monitor.update("Launching browser")
         context = BrowserFactory.launch_persistent_context(
             playwright,
             headless=headless
@@ -73,14 +75,14 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
         # Navigate to notebook
         page = context.new_page()
-        print("  🌐 Opening notebook...")
+        monitor.update("Opening notebook")
         page.goto(notebook_url, wait_until="domcontentloaded")
 
         # Wait for NotebookLM
         page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
 
         # Wait for query input (MCP approach)
-        print("  ⏳ Waiting for query input...")
+        monitor.update("Waiting for query input")
         query_element = None
 
         for selector in QUERY_INPUT_SELECTORS:
@@ -101,21 +103,21 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             return None
 
         # Type question (human-like, fast)
-        print("  ⏳ Typing question...")
-        
+        monitor.update("Typing question")
+
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
 
         # Submit
-        print("  📤 Submitting...")
+        monitor.update("Submitting question")
         page.keyboard.press("Enter")
 
         # Small pause
         StealthUtils.random_delay(500, 1500)
 
         # Wait for response (MCP approach: poll for stable text)
-        print("  ⏳ Waiting for answer...")
+        monitor.update("Waiting for NotebookLM answer")
 
         answer = None
         stable_count = 0
@@ -159,15 +161,15 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             time.sleep(1)
 
         if not answer:
-            print("  ❌ Timeout waiting for answer")
+            monitor.error("Timeout waiting for answer")
             return None
 
-        print("  ✅ Got answer!")
+        monitor.complete("Answer received")
         # Add follow-up reminder to encourage Claude to ask more questions
         return answer + FOLLOW_UP_REMINDER
 
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        monitor.error(str(e))
         import traceback
         traceback.print_exc()
         return None

@@ -42,3 +42,10 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 LOGIN_TIMEOUT_MINUTES = 10
 QUERY_TIMEOUT_SECONDS = 120
 PAGE_LOAD_TIMEOUT = 30000
+
+# Timezone — all notifications and due dates use Dubai time (GST / UTC+4)
+from datetime import timezone, timedelta as _td
+TIMEZONE = timezone(_td(hours=4))
+TIMEZONE_NAME = "Asia/Dubai (GST, UTC+4)"
+DIGEST_HOUR = 8  # 8:00 AM Dubai time
+DIGEST_CRON_UTC_HOUR = 4  # 8 AM Dubai = 4 AM UTC
