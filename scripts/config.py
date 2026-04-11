@@ -27,6 +27,14 @@ RESPONSE_SELECTORS = [
     "[data-message-author='assistant']",
 ]
 
+# Source Management Selectors
+SOURCE_ITEM_SELECTOR = "button.source-stretched-button"
+MORE_VERT_SELECTOR = 'button:has-text("more_vert")'
+REMOVE_MENU_SELECTOR = "[role='menuitem']:has-text('Remove')"
+DELETE_DIALOG_SELECTOR = "mat-dialog-container"
+WEBSITE_URL_INPUT_SELECTOR = "textarea[placeholder='Paste any links']"
+COPIED_TEXT_INPUT_SELECTOR = "textarea[placeholder='Paste text here']"
+
 # Browser Configuration
 BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
