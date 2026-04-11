@@ -106,35 +106,58 @@ python scripts/run.py notebook_manager.py remove --id notebook-id
 ```
 
 ### Quick Workflow
-1. Check library: `python scripts/run.py notebook_manager.py list`
-2. Ask question: `python scripts/run.py ask_question.py --question "..." --notebook-id ID`
+```bash
+notebook_manager.py sync                           # discover all notebooks
+notebook_manager.py find "topic"                   # find by name or source
+ask_question.py --question "..." --notebook-id ID  # ask a question
+```
 
-### Step 3b: Manage Notebook Sources
+### Step 3: Manage Notebooks (Web-Backed)
 
 ```bash
-# List sources in a notebook
+# Discover all notebooks from web
+python scripts/run.py notebook_manager.py sync
+python scripts/run.py notebook_manager.py sync --deep          # also scrape source names
+python scripts/run.py notebook_manager.py sync --deep --stale  # only re-scrape changed notebooks
+
+# Search notebooks (instant, searches names + source filenames)
+python scripts/run.py notebook_manager.py find "eigenform"
+
+# Import a notebook by URL (auto-discovers title + sources)
+python scripts/run.py notebook_manager.py import --url "https://notebooklm.google.com/notebook/..."
+
+# Create, rename, delete notebooks on web
+python scripts/run.py notebook_manager.py create --title "New Research"
+python scripts/run.py notebook_manager.py rename --id ID --title "Better Name"
+python scripts/run.py notebook_manager.py delete --id ID --confirm
+
+# Local library operations (instant, no browser)
+python scripts/run.py notebook_manager.py list [--format json]
+python scripts/run.py notebook_manager.py activate --id ID
+python scripts/run.py notebook_manager.py exclude --id ID
+python scripts/run.py notebook_manager.py stats
+```
+
+### Step 3b: Manage Sources
+
+```bash
+# List sources (writes to library, then displays from library)
 python scripts/run.py source_manager.py list --notebook-id ID
 
-# Add text as a source (NotebookLM auto-generates title from content)
-python scripts/run.py source_manager.py add-text --text "Your content here" --notebook-id ID
-
-# Add text from a local file as a source
+# Add sources
+python scripts/run.py source_manager.py add-text --text "Your content" --notebook-id ID
 python scripts/run.py source_manager.py add-text --from-file /path/to/notes.txt --notebook-id ID
-
-# Upload a file as source (PDF, images, docs, audio, etc.)
 python scripts/run.py source_manager.py add-file --file /path/to/file.pdf --notebook-id ID
-
-# Add website/YouTube URLs as sources
 python scripts/run.py source_manager.py add-website --urls "https://example.com" --notebook-id ID
 
-# Read a source's content
+# Read, rename, remove sources
 python scripts/run.py source_manager.py read --name "Source Name" --notebook-id ID
-
-# Remove a source
+python scripts/run.py source_manager.py rename --name "Old Name" --title "New Name" --notebook-id ID
 python scripts/run.py source_manager.py remove --name "Source Name" --notebook-id ID
 
-# Run integration test (add → read → remove round-trip)
-python scripts/run.py source_manager.py test --notebook-id ID
+# Select specific sources for querying (deselect others)
+python scripts/run.py source_manager.py select --names "source1,source2" --notebook-id ID
+python scripts/run.py source_manager.py select --all --notebook-id ID
 ```
 
 ### Step 4: Ask Questions
@@ -144,10 +167,10 @@ python scripts/run.py source_manager.py test --notebook-id ID
 python scripts/run.py ask_question.py --question "Your question here"
 
 # Query specific notebook
-python scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
+python scripts/run.py ask_question.py --question "..." --notebook-id ID
 
-# Query with notebook URL directly
-python scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
+# Query only specific sources (others excluded)
+python scripts/run.py ask_question.py --question "..." --sources "source1,source2" --notebook-id ID
 
 # Show browser for debugging
 python scripts/run.py ask_question.py --question "..." --show-browser
@@ -180,26 +203,35 @@ python scripts/run.py auth_manager.py clear    # Clear authentication
 
 ### Notebook Management (`notebook_manager.py`)
 ```bash
-python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
-python scripts/run.py notebook_manager.py list
-python scripts/run.py notebook_manager.py search --query QUERY
+# Web-backed
+python scripts/run.py notebook_manager.py sync [--deep] [--deep --stale] [--library-only] [--force]
+python scripts/run.py notebook_manager.py import --url URL
+python scripts/run.py notebook_manager.py create --title "..."
+python scripts/run.py notebook_manager.py rename --id ID --title "..."
+python scripts/run.py notebook_manager.py delete --id ID --confirm
+# Local library
+python scripts/run.py notebook_manager.py list [--format json]
+python scripts/run.py notebook_manager.py find "query"
 python scripts/run.py notebook_manager.py activate --id ID
-python scripts/run.py notebook_manager.py remove --id ID
+python scripts/run.py notebook_manager.py exclude --id ID
 python scripts/run.py notebook_manager.py stats
 ```
 
 ### Question Interface (`ask_question.py`)
 ```bash
-python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
+python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--sources "s1,s2"] [--show-browser]
 ```
 
 ### Source Management (`source_manager.py`)
 ```bash
-python scripts/run.py source_manager.py list [--notebook-id ID] [--notebook-url URL]
+python scripts/run.py source_manager.py list [--notebook-id ID]
 python scripts/run.py source_manager.py add-text --text "..." [--from-file PATH] [--notebook-id ID]
 python scripts/run.py source_manager.py add-file --file PATH [--notebook-id ID]
 python scripts/run.py source_manager.py add-website --urls "URL1,URL2" [--notebook-id ID]
 python scripts/run.py source_manager.py read --name "Source Name" [--notebook-id ID]
+python scripts/run.py source_manager.py rename --name "Name" --title "New Name" [--notebook-id ID]
+python scripts/run.py source_manager.py select --names "s1,s2" [--notebook-id ID]
+python scripts/run.py source_manager.py select --all [--notebook-id ID]
 python scripts/run.py source_manager.py remove --name "Source Name" [--notebook-id ID]
 python scripts/run.py source_manager.py test [--notebook-id ID] [--show-browser]
 ```
