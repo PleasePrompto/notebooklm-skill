@@ -8,6 +8,7 @@ import argparse
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -63,6 +64,24 @@ class SourceManager:
             if label:
                 names.append(label)
         return names
+
+    def _update_library_sources(self, page) -> None:
+        """Scrape current source names and write them back to the library entry."""
+        names = self._get_source_names(page)
+        library = NotebookLibrary()
+        my_uuid = library._extract_notebook_id_from_url(self.notebook_url)
+        if not my_uuid:
+            return
+
+        for nid, nb in library.notebooks.items():
+            nb_uuid = library._extract_notebook_id_from_url(nb.get("url", ""))
+            if nb_uuid == my_uuid:
+                nb["sources"] = names
+                nb["source_count"] = len(names)
+                nb["sources_scraped_at"] = datetime.now().isoformat()
+                nb["updated_at"] = datetime.now().isoformat()
+                library._save_library()
+                return
 
     def _find_source_index(self, page, name: str) -> Optional[int]:
         """Find a source by name. Exact match first, then case-insensitive substring."""
@@ -136,10 +155,23 @@ class SourceManager:
     # ------------------------------------------------------------------ #
 
     def list_sources(self) -> Optional[List[Dict[str, str]]]:
-        """List all sources in the notebook."""
+        """List all sources in the notebook. Writes to library first, prints from library."""
 
         def _op(page):
-            names = self._get_source_names(page)
+            # Scrape and persist to library
+            self._update_library_sources(page)
+
+            # Read back from library for display
+            library = NotebookLibrary()
+            my_uuid = library._extract_notebook_id_from_url(self.notebook_url)
+            names = []
+            if my_uuid:
+                for nb in library.notebooks.values():
+                    nb_uuid = library._extract_notebook_id_from_url(nb.get("url", ""))
+                    if nb_uuid == my_uuid:
+                        names = nb.get("sources", [])
+                        break
+
             print(f"\n📚 Sources ({len(names)}):")
             for i, name in enumerate(names):
                 print(f"  [{i}] {name}")
@@ -181,6 +213,7 @@ class SourceManager:
             print("  ⏳ Waiting for processing...")
 
             if self._wait_for_source_count(page, initial_count + 1):
+                self._update_library_sources(page)
                 names = self._get_source_names(page)
                 print(f"  ✅ Source added! Now {len(names)} sources.")
                 return True
@@ -243,6 +276,7 @@ class SourceManager:
             final_count = len(page.query_selector_all(SOURCE_ITEM_SELECTOR))
             added = final_count - initial_count
             if added > 0:
+                self._update_library_sources(page)
                 print(f"  ✅ {added} source(s) added! Now {final_count} sources.")
                 return True
             else:
@@ -278,6 +312,7 @@ class SourceManager:
             print("  ⏳ Waiting for processing...")
 
             if self._wait_for_source_count(page, initial_count + 1):
+                self._update_library_sources(page)
                 names = self._get_source_names(page)
                 print(f"  ✅ File uploaded! Now {len(names)} sources.")
                 return True
@@ -425,6 +460,7 @@ class SourceManager:
                     if save_btn:
                         save_btn.click(force=True)
                         time.sleep(2)
+                        self._update_library_sources(page)
                         print(f"  ✅ Renamed!")
                         return True
 
@@ -575,6 +611,7 @@ class SourceManager:
             # Verify deletion
             final_count = len(page.query_selector_all(SOURCE_ITEM_SELECTOR))
             if final_count < initial_count:
+                self._update_library_sources(page)
                 print(f"  ✅ Removed! Now {final_count} sources.")
                 return True
             else:

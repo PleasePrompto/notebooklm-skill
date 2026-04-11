@@ -136,7 +136,10 @@ class NotebookLibrary:
         if notebook_id not in self.notebooks:
             raise ValueError(f"Notebook not found: {notebook_id}")
         nb = self.notebooks[notebook_id]
-        for key in ["name", "description", "topics", "url", "source_count"]:
+        for key in [
+            "name", "description", "topics", "url", "source_count",
+            "sources", "sources_scraped_at",
+        ]:
             if key in kwargs and kwargs[key] is not None:
                 nb[key] = kwargs[key]
         nb["updated_at"] = datetime.now().isoformat()
@@ -150,7 +153,7 @@ class NotebookLibrary:
         return list(self.notebooks.values())
 
     def find_notebooks(self, query: str) -> List[Dict[str, Any]]:
-        """Fuzzy search across name, description, and topics."""
+        """Fuzzy search across name, description, topics, and source names."""
         q = query.lower()
         results = []
         for nb in self.notebooks.values():
@@ -162,7 +165,14 @@ class NotebookLibrary:
                 ]
             )
             if q in searchable:
-                results.append(nb)
+                results.append({**nb, "_matched_source": None})
+                continue
+
+            # Search source names
+            for src_name in nb.get("sources", []):
+                if q in src_name.lower():
+                    results.append({**nb, "_matched_source": src_name})
+                    break
         return results
 
     def select_notebook(self, notebook_id: str) -> Dict[str, Any]:
@@ -336,7 +346,45 @@ class NotebookLibrary:
         }""")
         return results
 
-    def sync_from_web(self, library_only=False, force=False, headless=True):
+    def _deep_scrape_notebook_sources(self, page, nb_id: str, nb: Dict[str, Any]) -> List[str]:
+        """Open a notebook, click Sources tab, scrape source names, update library."""
+        from config import SOURCE_ITEM_SELECTOR
+
+        url = nb.get("url", "")
+        print(f"    📑 Deep scraping: {nb['name'][:50]}...")
+
+        page.goto(url, wait_until="domcontentloaded")
+        page.wait_for_url(
+            re.compile(r"^https://notebooklm\.google\.com/"), timeout=15000
+        )
+        time.sleep(3)
+
+        # Click Sources tab
+        try:
+            sources_tab = page.get_by_text("Sources", exact=True).first
+            sources_tab.click()
+            time.sleep(2)
+        except Exception as e:
+            print(f"    ⚠️  Could not open Sources tab: {e}")
+            return []
+
+        elements = page.query_selector_all(SOURCE_ITEM_SELECTOR)
+        names = []
+        for el in elements:
+            label = el.get_attribute("aria-label") or ""
+            if label:
+                names.append(label)
+
+        nb["sources"] = names
+        nb["source_count"] = len(names)
+        nb["sources_scraped_at"] = datetime.now().isoformat()
+        nb["updated_at"] = datetime.now().isoformat()
+        self._save_library()
+        print(f"    ✅ {len(names)} sources found")
+        return names
+
+    def sync_from_web(self, library_only=False, force=False, headless=True,
+                      deep=False, stale_only=False):
         """Sync notebooks from NotebookLM web UI into local library."""
 
         def _op(page):
@@ -393,6 +441,21 @@ class NotebookLibrary:
             print(
                 f"  ✅ Sync complete: {added} added, {updated} updated, {skipped} skipped"
             )
+
+            # Deep scrape: open each notebook and scrape source names
+            if deep:
+                print("\n  🔬 Deep scrape: fetching source names per notebook...")
+                deep_count = 0
+                for nid, nb in list(self.notebooks.items()):
+                    if stale_only:
+                        homepage_count = nb.get("source_count", 0)
+                        scraped_sources = nb.get("sources", [])
+                        if len(scraped_sources) == homepage_count and scraped_sources:
+                            continue
+                    self._deep_scrape_notebook_sources(page, nid, nb)
+                    deep_count += 1
+                print(f"  ✅ Deep scrape complete: {deep_count} notebooks scraped")
+
             return {"added": added, "updated": updated, "skipped": skipped}
 
         return self._run_browser_op(_op, headless=headless)
@@ -703,6 +766,14 @@ def main():
     sync_p.add_argument(
         "--force", action="store_true", help="Ignore exclusion list"
     )
+    sync_p.add_argument(
+        "--deep", action="store_true",
+        help="Also scrape source names from each notebook"
+    )
+    sync_p.add_argument(
+        "--stale", action="store_true",
+        help="With --deep, only re-scrape notebooks where source count changed"
+    )
     sync_p.add_argument("--show-browser", action="store_true")
 
     imp_p = subparsers.add_parser("import", help="Import notebook by URL")
@@ -747,10 +818,22 @@ def main():
             print(f"\n📚 Notebook Library ({len(notebooks)}):")
             for nb in notebooks:
                 active = " ★" if nb["id"] == library.active_notebook_id else ""
-                sources = nb.get("source_count", "?")
+                homepage_count = nb.get("source_count", 0)
+                scraped_sources = nb.get("sources", [])
+                scraped_len = len(scraped_sources)
+
+                # Staleness check: homepage count vs deep-scraped list length
+                stale_marker = ""
+                stale_detail = ""
+                if scraped_sources and scraped_len != homepage_count:
+                    stale_marker = " ★"
+                    stale_detail = (
+                        f" (⚠️ stale — count was {scraped_len}, now {homepage_count})"
+                    )
+
                 print(f"\n  📓 {nb['name']}{active}")
                 print(f"     ID: {nb['id']}")
-                print(f"     Sources: {sources}")
+                print(f"     Sources: {homepage_count}{stale_detail}")
                 if nb.get("description"):
                     print(f"     {nb['description'][:80]}")
         else:
@@ -763,6 +846,9 @@ def main():
             for nb in results:
                 active = " ★" if nb["id"] == library.active_notebook_id else ""
                 print(f"  📓 {nb['name']}{active}  ({nb['id']})")
+                matched_src = nb.get("_matched_source")
+                if matched_src:
+                    print(f"     ↳ source match: \"{matched_src}\"")
         else:
             print(f"🔍 No notebooks match: {args.query}")
 
@@ -796,6 +882,8 @@ def main():
             library_only=args.library_only,
             force=args.force,
             headless=headless,
+            deep=args.deep,
+            stale_only=args.stale,
         )
 
     elif args.command == "import":
