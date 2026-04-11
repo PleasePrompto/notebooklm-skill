@@ -350,21 +350,17 @@ class NotebookLibrary:
         """Find a notebook card on the homepage by UUID. Returns the mat-card element."""
         from config import NOTEBOOK_CARD_SELECTOR
 
-        # Use JS to find which card index corresponds to this UUID
+        # The <a> link lives INSIDE the mat-card, so link.closest() finds it
         card_index = page.evaluate("""(uuid) => {
             const links = document.querySelectorAll('a[href*="/notebook/"]');
             for (const link of links) {
                 if (link.href.includes(uuid)) {
-                    // Find the sibling card in the same parent
-                    const parent = link.parentElement;
-                    if (!parent) continue;
-                    const cards = parent.querySelectorAll('mat-card.project-button-card');
-                    if (cards.length > 0) {
-                        // Return the index of this card among ALL cards on the page
-                        const allCards = document.querySelectorAll('mat-card.project-button-card');
-                        for (let i = 0; i < allCards.length; i++) {
-                            if (allCards[i] === cards[0]) return i;
-                        }
+                    const card = link.closest('mat-card.project-button-card')
+                        || link.parentElement;
+                    if (!card) continue;
+                    const allCards = document.querySelectorAll('mat-card.project-button-card');
+                    for (let i = 0; i < allCards.length; i++) {
+                        if (allCards[i] === card) return i;
                     }
                 }
             }
