@@ -350,34 +350,34 @@ class NotebookLibrary:
         """Find a notebook card on the homepage by UUID. Returns the mat-card element."""
         from config import NOTEBOOK_CARD_SELECTOR
 
-        # Use JS to find the link with matching href, then get its sibling card
-        card = page.evaluate("""(uuid) => {
+        # Use JS to find which card index corresponds to this UUID
+        card_index = page.evaluate("""(uuid) => {
             const links = document.querySelectorAll('a[href*="/notebook/"]');
             for (const link of links) {
                 if (link.href.includes(uuid)) {
-                    // The card is a sibling or child of the same parent
+                    // Find the sibling card in the same parent
                     const parent = link.parentElement;
-                    const card = parent?.querySelector('mat-card.project-button-card')
-                        || parent?.closest('[class*="project-item"]')?.querySelector('mat-card.project-button-card');
-                    if (card) return true;
+                    if (!parent) continue;
+                    const cards = parent.querySelectorAll('mat-card.project-button-card');
+                    if (cards.length > 0) {
+                        // Return the index of this card among ALL cards on the page
+                        const allCards = document.querySelectorAll('mat-card.project-button-card');
+                        for (let i = 0; i < allCards.length; i++) {
+                            if (allCards[i] === cards[0]) return i;
+                        }
+                    }
                 }
             }
-            return false;
+            return -1;
         }""", uuid)
 
-        if not card:
+        if card_index < 0:
             return None
 
-        # Find the card element via Playwright (can't return DOM elements from evaluate)
-        # Instead, find the link, get its parent, and find the card + menu button
-        links = page.query_selector_all(f"a[href*='{uuid}']")
-        if not links:
-            return None
-
-        link = links[0]
-        parent = link.evaluate_handle("e => e.parentElement")
-        card_el = parent.as_element().query_selector("mat-card.project-button-card")
-        return card_el
+        cards = page.query_selector_all(NOTEBOOK_CARD_SELECTOR)
+        if card_index < len(cards):
+            return cards[card_index]
+        return None
 
     def _deep_scrape_notebook_sources(self, page, nb_id: str, nb: Dict[str, Any]) -> List[str]:
         """Open a notebook, click Sources tab, scrape source names, update library."""
@@ -573,6 +573,12 @@ class NotebookLibrary:
             create_btn.click()
             time.sleep(5)
 
+            # Wait for the redirect to the actual notebook URL
+            try:
+                page.wait_for_url(re.compile(r"/notebook/[a-f0-9]{8}-"), timeout=15000)
+            except:
+                pass
+            time.sleep(2)
             new_url = page.url
             print(f"  📓 URL: {new_url}")
 
