@@ -346,6 +346,39 @@ class NotebookLibrary:
         }""")
         return results
 
+    def _find_notebook_card_by_uuid(self, page, uuid: str):
+        """Find a notebook card on the homepage by UUID. Returns the mat-card element."""
+        from config import NOTEBOOK_CARD_SELECTOR
+
+        # Use JS to find the link with matching href, then get its sibling card
+        card = page.evaluate("""(uuid) => {
+            const links = document.querySelectorAll('a[href*="/notebook/"]');
+            for (const link of links) {
+                if (link.href.includes(uuid)) {
+                    // The card is a sibling or child of the same parent
+                    const parent = link.parentElement;
+                    const card = parent?.querySelector('mat-card.project-button-card')
+                        || parent?.closest('[class*="project-item"]')?.querySelector('mat-card.project-button-card');
+                    if (card) return true;
+                }
+            }
+            return false;
+        }""", uuid)
+
+        if not card:
+            return None
+
+        # Find the card element via Playwright (can't return DOM elements from evaluate)
+        # Instead, find the link, get its parent, and find the card + menu button
+        links = page.query_selector_all(f"a[href*='{uuid}']")
+        if not links:
+            return None
+
+        link = links[0]
+        parent = link.evaluate_handle("e => e.parentElement")
+        card_el = parent.as_element().query_selector("mat-card.project-button-card")
+        return card_el
+
     def _deep_scrape_notebook_sources(self, page, nb_id: str, nb: Dict[str, Any]) -> List[str]:
         """Open a notebook, click Sources tab, scrape source names, update library."""
         from config import SOURCE_ITEM_SELECTOR
@@ -615,42 +648,33 @@ class NotebookLibrary:
 
             print(f"  ✏️  Renaming: {nb['name']} → {new_title}")
 
-            from config import NOTEBOOK_CARD_SELECTOR, NOTEBOOK_MENU_SELECTOR
+            from config import NOTEBOOK_MENU_SELECTOR, NOTEBOOK_TITLE_FC_SELECTOR
 
-            cards = page.query_selector_all(NOTEBOOK_CARD_SELECTOR)
-            for card in cards:
-                try:
-                    href = card.evaluate(
-                        "e => e.closest('a')?.getAttribute('href') || ''"
-                    )
-                    if uuid in href:
-                        menu_btn = card.query_selector(NOTEBOOK_MENU_SELECTOR)
-                        menu_btn.click()
-                        time.sleep(1)
+            card = self._find_notebook_card_by_uuid(page, uuid)
+            if not card:
+                print("  ❌ Notebook not found on web")
+                return False
 
-                        edit_item = page.query_selector(
-                            "[role='menuitem']:has-text('Edit title')"
-                        )
-                        edit_item.click()
-                        time.sleep(2)
+            menu_btn = card.query_selector(NOTEBOOK_MENU_SELECTOR)
+            menu_btn.click()
+            time.sleep(1)
 
-                        from config import NOTEBOOK_TITLE_FC_SELECTOR
+            edit_item = page.query_selector(
+                "[role='menuitem']:has-text('Edit title')"
+            )
+            edit_item.click()
+            time.sleep(2)
 
-                        title_input = page.locator(NOTEBOOK_TITLE_FC_SELECTOR)
-                        title_input.fill(new_title)
-                        time.sleep(1)
+            title_input = page.locator(NOTEBOOK_TITLE_FC_SELECTOR)
+            title_input.fill(new_title)
+            time.sleep(1)
 
-                        page.get_by_role("button", name="Save").first.click()
-                        time.sleep(2)
+            page.get_by_role("button", name="Save").first.click()
+            time.sleep(2)
 
-                        self.update_notebook(notebook_id, name=new_title)
-                        print(f"  ✅ Renamed!")
-                        return True
-                except:
-                    continue
-
-            print("  ❌ Notebook not found on web")
-            return False
+            self.update_notebook(notebook_id, name=new_title)
+            print(f"  ✅ Renamed!")
+            return True
 
         result = self._run_browser_op(_op, headless=headless)
         return result if result else False
@@ -681,45 +705,35 @@ class NotebookLibrary:
             print(f"  🗑️  Deleting: {nb['name']}")
 
             from config import (
-                NOTEBOOK_CARD_SELECTOR,
                 NOTEBOOK_MENU_SELECTOR,
                 DELETE_DIALOG_SELECTOR,
             )
 
-            cards = page.query_selector_all(NOTEBOOK_CARD_SELECTOR)
-            for card in cards:
-                try:
-                    href = card.evaluate(
-                        "e => e.closest('a')?.getAttribute('href') || ''"
-                    )
-                    if uuid in href:
-                        menu_btn = card.query_selector(NOTEBOOK_MENU_SELECTOR)
-                        menu_btn.click()
-                        time.sleep(1)
+            card = self._find_notebook_card_by_uuid(page, uuid)
+            if not card:
+                print("  ❌ Notebook not found on web")
+                return False
 
-                        del_item = page.query_selector(
-                            "[role='menuitem']:has-text('Delete')"
-                        )
-                        del_item.click()
-                        time.sleep(2)
+            menu_btn = card.query_selector(NOTEBOOK_MENU_SELECTOR)
+            menu_btn.click()
+            time.sleep(1)
 
-                        dialog = page.query_selector(DELETE_DIALOG_SELECTOR)
-                        if dialog:
-                            del_btn = dialog.query_selector(
-                                "button:has-text('Delete')"
-                            )
-                            if del_btn:
-                                del_btn.click(force=True)
-                                time.sleep(3)
+            del_item = page.query_selector(
+                "[role='menuitem']:has-text('Delete')"
+            )
+            del_item.click()
+            time.sleep(2)
 
-                        self.remove_notebook(notebook_id)
-                        print(f"  ✅ Deleted from web and library")
-                        return True
-                except:
-                    continue
+            dialog = page.query_selector(DELETE_DIALOG_SELECTOR)
+            if dialog:
+                del_btn = dialog.query_selector("button:has-text('Delete')")
+                if del_btn:
+                    del_btn.click(force=True)
+                    time.sleep(3)
 
-            print("  ❌ Notebook not found on web")
-            return False
+            self.remove_notebook(notebook_id)
+            print(f"  ✅ Deleted from web and library")
+            return True
 
         result = self._run_browser_op(_op, headless=headless)
         return result if result else False
