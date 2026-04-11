@@ -192,59 +192,65 @@ class SourceManager:
         return result if result is not None else False
 
     def add_source_website(self, urls: List[str]) -> bool:
-        """Add website/YouTube URL sources to the notebook.
-
-        NOTE: This uses --show-browser mode and requires manual confirmation.
-        NotebookLM's Angular form validation blocks programmatic URL input.
-        The browser will open with the URLs pre-filled, but you must click Submit.
-        """
+        """Add website/YouTube URL sources to the notebook."""
         for url in urls:
             if not url.startswith(("http://", "https://")):
                 print(f"  ❌ Invalid URL: {url}")
                 return False
 
-        # Force visible browser for URL input (user must click Submit)
-        saved_headless = self.headless
-        self.headless = False
-
         def _op(page):
             initial_count = len(page.query_selector_all(SOURCE_ITEM_SELECTOR))
             print(f"  🔗 Adding {len(urls)} URL source(s)...")
 
-            page.get_by_role(
-                "button", name=re.compile("add source", re.I)
-            ).first.click()
-            time.sleep(2)
+            for i, url in enumerate(urls):
+                if i > 0:
+                    # Re-open the add source dialog for subsequent URLs
+                    page.get_by_role(
+                        "button", name=re.compile("add source", re.I)
+                    ).first.click()
+                    time.sleep(2)
+                    page.get_by_text("Websites", exact=True).first.click()
+                    time.sleep(2)
+                else:
+                    page.get_by_role(
+                        "button", name=re.compile("add source", re.I)
+                    ).first.click()
+                    time.sleep(2)
+                    page.get_by_text("Websites", exact=True).first.click()
+                    time.sleep(2)
 
-            page.get_by_text("Websites", exact=True).first.click()
-            time.sleep(2)
+                # Use Angular FormControl selector (triggers reactive form validation)
+                fc = page.locator("[formcontrolname='urls']")
+                fc.fill(url)
+                time.sleep(1)
 
-            # Type URLs into the textarea
-            locator = page.locator(WEBSITE_URL_INPUT_SELECTOR)
-            locator.click()
-            time.sleep(0.5)
-            locator.press_sequentially("\n".join(urls), delay=30)
+                # Click Insert button (the actual submit for URL sources)
+                insert_btn = page.get_by_role("button", name="Insert")
+                try:
+                    insert_btn.wait_for(state="visible", timeout=5000)
+                    if insert_btn.is_enabled():
+                        insert_btn.click()
+                    else:
+                        print(f"  ❌ Insert button disabled for: {url}")
+                        continue
+                except:
+                    print(f"  ❌ Could not find Insert button for: {url}")
+                    continue
 
-            print("  ⚠️  Browser is open — please click Submit manually.")
-            print("  ⏳ Waiting up to 120s for source to appear...")
+                print(f"  ⏳ Processing ({i + 1}/{len(urls)}): {url}")
+                self._wait_for_source_count(page, initial_count + i + 1, timeout=60)
 
-            if self._wait_for_source_count(page, initial_count + 1, timeout=120):
-                names = self._get_source_names(page)
-                print(f"  ✅ Source(s) added! Now {len(names)} sources.")
+            final_count = len(page.query_selector_all(SOURCE_ITEM_SELECTOR))
+            added = final_count - initial_count
+            if added > 0:
+                print(f"  ✅ {added} source(s) added! Now {final_count} sources.")
                 return True
             else:
-                current = len(page.query_selector_all(SOURCE_ITEM_SELECTOR))
-                if current > initial_count:
-                    print(f"  ✅ {current - initial_count} source(s) added.")
-                    return True
-                print("  ❌ Timeout — source was not added")
+                print("  ❌ No sources were added")
                 return False
 
-        try:
-            result = self._run_browser_op(_op)
-            return result if result is not None else False
-        finally:
-            self.headless = saved_headless
+        result = self._run_browser_op(_op)
+        return result if result is not None else False
 
     def add_source_file(self, file_path: str) -> bool:
         """Upload a file as a source to the notebook."""

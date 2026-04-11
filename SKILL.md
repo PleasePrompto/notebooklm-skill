@@ -124,7 +124,7 @@ python scripts/run.py source_manager.py add-text --from-file /path/to/notes.txt 
 # Upload a file as source (PDF, images, docs, audio, etc.)
 python scripts/run.py source_manager.py add-file --file /path/to/file.pdf --notebook-id ID
 
-# Add a website URL (opens browser — requires manual Submit click)
+# Add website/YouTube URLs as sources
 python scripts/run.py source_manager.py add-website --urls "https://example.com" --notebook-id ID
 
 # Read a source's content
@@ -136,8 +136,6 @@ python scripts/run.py source_manager.py remove --name "Source Name" --notebook-i
 # Run integration test (add → read → remove round-trip)
 python scripts/run.py source_manager.py test --notebook-id ID
 ```
-
-**Note:** `add-website` requires manual confirmation because NotebookLM's Angular form validation blocks programmatic URL input. The browser opens with the URL pre-typed — you just need to click Submit.
 
 ### Step 4: Ask Questions
 
@@ -200,7 +198,7 @@ python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--not
 python scripts/run.py source_manager.py list [--notebook-id ID] [--notebook-url URL]
 python scripts/run.py source_manager.py add-text --text "..." [--from-file PATH] [--notebook-id ID]
 python scripts/run.py source_manager.py add-file --file PATH [--notebook-id ID]
-python scripts/run.py source_manager.py add-website --urls "URL1,URL2" [--notebook-id ID]  # semi-auto
+python scripts/run.py source_manager.py add-website --urls "URL1,URL2" [--notebook-id ID]
 python scripts/run.py source_manager.py read --name "Source Name" [--notebook-id ID]
 python scripts/run.py source_manager.py remove --name "Source Name" [--notebook-id ID]
 python scripts/run.py source_manager.py test [--notebook-id ID] [--show-browser]
