@@ -35,6 +35,13 @@ DELETE_DIALOG_SELECTOR = "mat-dialog-container"
 WEBSITE_URL_INPUT_SELECTOR = "[formcontrolname='urls']"
 COPIED_TEXT_INPUT_SELECTOR = "textarea[placeholder='Paste text here']"
 
+# Notebook Management Selectors (homepage)
+NOTEBOOK_CARD_SELECTOR = "mat-card.project-button-card"
+NOTEBOOK_LINK_SELECTOR = "a[href*='/notebook/']"
+NOTEBOOK_MENU_SELECTOR = "button[aria-label='Project Actions Menu']"
+NOTEBOOK_TITLE_FC_SELECTOR = "[formcontrolname='title']"
+NOTEBOOKLM_HOME_URL = "https://notebooklm.google.com/"
+
 # Browser Configuration
 BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
