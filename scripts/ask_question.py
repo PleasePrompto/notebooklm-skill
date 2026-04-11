@@ -37,7 +37,54 @@ FOLLOW_UP_REMINDER = (
 )
 
 
-def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
+def select_sources_for_query(page, source_names: list) -> None:
+    """Select specific sources before asking a question."""
+    from config import SOURCE_ITEM_SELECTOR
+
+    print(f"  🎯 Selecting {len(source_names)} source(s)...")
+
+    # Click Sources tab
+    sources_tab = page.get_by_text("Sources", exact=True).first
+    sources_tab.click()
+    time.sleep(2)
+
+    # Get all source names
+    all_sources = []
+    for el in page.query_selector_all(SOURCE_ITEM_SELECTOR):
+        label = el.get_attribute("aria-label") or ""
+        if label:
+            all_sources.append(label)
+
+    # Resolve fuzzy names
+    selected = set()
+    for name in source_names:
+        name_lower = name.lower()
+        for src in all_sources:
+            if name_lower in src.lower() or src.lower() in name_lower:
+                selected.add(src)
+                break
+
+    # Toggle checkboxes
+    for src_name in all_sources:
+        checkbox = page.query_selector(f"input[aria-label='{src_name}']")
+        if not checkbox:
+            continue
+        is_checked = checkbox.is_checked()
+        should_check = src_name in selected
+        if is_checked != should_check:
+            checkbox.click(force=True)
+            time.sleep(0.3)
+
+    for s in selected:
+        print(f"    ✓ {s}")
+
+    # Switch back to Chat tab
+    chat_tab = page.get_by_text("Chat", exact=True).first
+    chat_tab.click()
+    time.sleep(2)
+
+
+def ask_notebooklm(question: str, notebook_url: str, headless: bool = True, sources: list = None) -> str:
     """
     Ask a question to NotebookLM
 
@@ -78,6 +125,11 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
         # Wait for NotebookLM
         page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+
+        # Select specific sources if requested
+        if sources:
+            time.sleep(3)
+            select_sources_for_query(page, sources)
 
         # Wait for query input (MCP approach)
         print("  ⏳ Waiting for query input...")
@@ -193,6 +245,7 @@ def main():
     parser.add_argument('--question', required=True, help='Question to ask')
     parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook ID from library')
+    parser.add_argument('--sources', help='Comma-separated source names to query (others excluded)')
     parser.add_argument('--show-browser', action='store_true', help='Show browser')
 
     args = parser.parse_args()
@@ -231,11 +284,17 @@ def main():
                 print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
             return 1
 
+    # Parse sources if provided
+    sources = None
+    if args.sources:
+        sources = [s.strip() for s in args.sources.split(",")]
+
     # Ask the question
     answer = ask_notebooklm(
         question=args.question,
         notebook_url=notebook_url,
-        headless=not args.show_browser
+        headless=not args.show_browser,
+        sources=sources
     )
 
     if answer:

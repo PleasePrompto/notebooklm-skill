@@ -363,6 +363,148 @@ class SourceManager:
 
         return self._run_browser_op(_op)
 
+    def rename_source(self, source_name: str, new_name: str) -> bool:
+        """Rename a source in the notebook."""
+
+        def _op(page):
+            idx = self._find_source_index(page, source_name)
+            if idx is None:
+                print(f"  ❌ Source not found: {source_name}")
+                return False
+
+            sources = page.query_selector_all(SOURCE_ITEM_SELECTOR)
+            label = sources[idx].get_attribute("aria-label") or source_name
+            print(f"  ✏️  Renaming: {label} → {new_name}")
+
+            # Hover to reveal more_vert menu
+            sources[idx].hover()
+            time.sleep(1)
+
+            # Find closest more_vert button
+            target_box = sources[idx].bounding_box()
+            more_btns = []
+            for mb in page.query_selector_all(MORE_VERT_SELECTOR):
+                try:
+                    if mb.is_visible():
+                        box = mb.bounding_box()
+                        if box and box["x"] < 400:
+                            more_btns.append((mb, box))
+                except:
+                    pass
+
+            if not more_btns:
+                print("  ❌ Could not find source menu button")
+                return False
+
+            best = min(more_btns, key=lambda x: abs(x[1]["y"] - target_box["y"]))
+            best[0].click()
+            time.sleep(1)
+
+            # Click "Rename source"
+            rename_item = page.query_selector(
+                "[role='menuitem']:has-text('Rename')"
+            )
+            if not rename_item:
+                print("  ❌ Could not find Rename option")
+                return False
+            rename_item.click()
+            time.sleep(2)
+
+            # Fill the rename input in the dialog
+            dialog = page.query_selector(DELETE_DIALOG_SELECTOR)
+            if dialog:
+                name_input = dialog.query_selector(
+                    "input, [formcontrolname]"
+                )
+                if name_input:
+                    name_input.fill(new_name)
+                    time.sleep(1)
+                    save_btn = dialog.query_selector(
+                        "button:has-text('Save'), button:has-text('Rename')"
+                    )
+                    if save_btn:
+                        save_btn.click(force=True)
+                        time.sleep(2)
+                        print(f"  ✅ Renamed!")
+                        return True
+
+            print("  ❌ Could not complete rename")
+            return False
+
+        result = self._run_browser_op(_op)
+        return result if result is not None else False
+
+    def select_sources(self, names: List[str]) -> bool:
+        """Select only the specified sources (deselect all others).
+
+        This controls which sources NotebookLM uses when answering questions.
+        """
+
+        def _op(page):
+            all_sources = self._get_source_names(page)
+            if not all_sources:
+                print("  ❌ No sources found")
+                return False
+
+            # Resolve names to match (fuzzy)
+            selected = set()
+            for name in names:
+                name_lower = name.lower()
+                for src in all_sources:
+                    if name_lower in src.lower() or src.lower() in name_lower:
+                        selected.add(src)
+                        break
+
+            if not selected:
+                print(f"  ❌ No sources matched: {names}")
+                return False
+
+            print(f"  🎯 Selecting {len(selected)}/{len(all_sources)} sources:")
+            for s in selected:
+                print(f"    ✓ {s}")
+
+            # Toggle checkboxes
+            for src_name in all_sources:
+                checkbox = page.query_selector(f"input[aria-label='{src_name}']")
+                if not checkbox:
+                    continue
+
+                is_checked = checkbox.is_checked()
+                should_check = src_name in selected
+
+                if is_checked and not should_check:
+                    checkbox.click(force=True)
+                    time.sleep(0.3)
+                elif not is_checked and should_check:
+                    checkbox.click(force=True)
+                    time.sleep(0.3)
+
+            print(f"  ✅ Source selection updated")
+            return True
+
+        result = self._run_browser_op(_op)
+        return result if result is not None else False
+
+    def select_all_sources(self) -> bool:
+        """Select all sources (reset to default)."""
+
+        def _op(page):
+            # Click "Select all sources" checkbox
+            select_all = page.query_selector(
+                "input[aria-label='Select all sources']"
+            )
+            if select_all:
+                if not select_all.is_checked():
+                    select_all.click(force=True)
+                    time.sleep(1)
+                print("  ✅ All sources selected")
+                return True
+            print("  ❌ Could not find Select All checkbox")
+            return False
+
+        result = self._run_browser_op(_op)
+        return result if result is not None else False
+
     def remove_source(self, source_name: str) -> bool:
         """Remove a source from the notebook."""
 
@@ -585,6 +727,24 @@ def main():
     read_parser.add_argument("--name", required=True, help="Source name")
     add_common_args(read_parser)
 
+    # rename
+    rename_parser = subparsers.add_parser("rename", help="Rename a source")
+    rename_parser.add_argument("--name", required=True, help="Current source name")
+    rename_parser.add_argument("--title", required=True, help="New name")
+    add_common_args(rename_parser)
+
+    # select
+    select_parser = subparsers.add_parser(
+        "select", help="Select specific sources for querying"
+    )
+    select_parser.add_argument(
+        "--names", help="Comma-separated source names to select (others deselected)"
+    )
+    select_parser.add_argument(
+        "--all", action="store_true", dest="select_all", help="Select all sources"
+    )
+    add_common_args(select_parser)
+
     # remove
     remove_parser = subparsers.add_parser("remove", help="Remove a source")
     remove_parser.add_argument("--name", required=True, help="Source name")
@@ -642,6 +802,19 @@ def main():
             print("=" * 60)
             return 0
         return 1
+
+    elif args.command == "rename":
+        return 0 if mgr.rename_source(args.name, args.title) else 1
+
+    elif args.command == "select":
+        if args.select_all:
+            return 0 if mgr.select_all_sources() else 1
+        elif args.names:
+            names = [n.strip() for n in args.names.split(",")]
+            return 0 if mgr.select_sources(names) else 1
+        else:
+            print("❌ Provide --names or --all")
+            return 1
 
     elif args.command == "remove":
         return 0 if mgr.remove_source(args.name) else 1

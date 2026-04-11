@@ -678,7 +678,8 @@ def main():
     add_p.add_argument("--description", default="", help="Description")
     add_p.add_argument("--topics", help="Comma-separated topics")
 
-    subparsers.add_parser("list", help="List all notebooks in library")
+    list_p = subparsers.add_parser("list", help="List all notebooks in library")
+    list_p.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     find_p = subparsers.add_parser("find", help="Fuzzy search notebooks")
     find_p.add_argument("query", help="Search query")
@@ -740,7 +741,9 @@ def main():
 
     elif args.command == "list":
         notebooks = library.list_notebooks()
-        if notebooks:
+        if args.format == "json":
+            print(json.dumps(notebooks, indent=2))
+        elif notebooks:
             print(f"\n📚 Notebook Library ({len(notebooks)}):")
             for nb in notebooks:
                 active = " ★" if nb["id"] == library.active_notebook_id else ""
