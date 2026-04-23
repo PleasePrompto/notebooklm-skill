@@ -81,10 +81,15 @@ class StealthUtils:
 
         # Click to focus
         element.click()
-        
-        # Type
+
+        # Type via page-level keyboard. Typing on the stored ElementHandle
+        # fails against NotebookLM's current UI because the textarea is
+        # re-rendered on first keystroke (React re-mount), which detaches
+        # the handle and raises `ElementHandle.type: Element is not attached
+        # to the DOM`. page.keyboard.type targets whatever element has
+        # focus at the moment of the keystroke, so it survives re-renders.
         for char in text:
-            element.type(char, delay=random.uniform(25, 75))
+            page.keyboard.type(char, delay=random.uniform(25, 75))
             if random.random() < 0.05:
                 time.sleep(random.uniform(0.15, 0.4))
 
