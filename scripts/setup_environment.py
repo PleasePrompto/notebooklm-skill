@@ -50,20 +50,38 @@ class SkillEnvironment:
         if self.requirements_file.exists():
             print("📦 Installing dependencies...")
             try:
-                # Upgrade pip first
-                subprocess.run(
-                    [str(self.venv_pip), "install", "--upgrade", "pip"],
-                    check=True,
+                # Upgrade pip first — use ``python -m pip`` instead of
+                # invoking ``pip.exe`` directly. On Windows, ``pip.exe``
+                # self-upgrade fails with exit 1 due to the .exe being
+                # locked by the running process even though the upgrade
+                # actually succeeds. Going through the Python module
+                # entry point sidesteps the file-lock problem.
+                # Don't ``check=True`` — ``pip install --upgrade pip``
+                # can still emit non-zero on Windows; verify success by
+                # output marker instead.
+                upgrade_result = subprocess.run(
+                    [str(self.venv_python), "-m", "pip", "install",
+                     "--upgrade", "pip"],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
+                upgrade_ok = (
+                    upgrade_result.returncode == 0
+                    or "Successfully installed" in (upgrade_result.stdout or "")
+                    or "already satisfied" in (upgrade_result.stdout or "")
+                )
+                if not upgrade_ok:
+                    print("⚠️ pip self-upgrade non-zero exit; continuing")
+                    print(f"   stdout: {(upgrade_result.stdout or '')[:300]}")
+                    print(f"   stderr: {(upgrade_result.stderr or '')[:300]}")
 
                 # Install requirements
-                result = subprocess.run(
-                    [str(self.venv_pip), "install", "-r", str(self.requirements_file)],
+                subprocess.run(
+                    [str(self.venv_python), "-m", "pip", "install",
+                     "-r", str(self.requirements_file)],
                     check=True,
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
                 print("✅ Dependencies installed")
 

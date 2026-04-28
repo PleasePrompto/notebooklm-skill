@@ -9,6 +9,15 @@ import sys
 import subprocess
 from pathlib import Path
 
+# Force UTF-8 stdout on Windows so emoji/CJK in print() don't crash
+# under default GBK / cp1252 codec. Must run before any print().
+if os.name == "nt":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 
 def get_venv_python():
     """Get the virtual environment Python executable"""
