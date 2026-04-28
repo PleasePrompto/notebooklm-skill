@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/pleaseprompto-notebooklm-skill-badge.png)](https://mseep.ai/app/pleaseprompto-notebooklm-skill)
+
 <div align="center">
 
 # NotebookLM Claude Code Skill
