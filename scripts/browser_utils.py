@@ -4,6 +4,7 @@ Handles browser launching, stealth features, and common interactions
 """
 
 import json
+import os
 import time
 import random
 from typing import Optional, List
@@ -25,16 +26,22 @@ class BrowserFactory:
         Launch a persistent browser context with anti-detection features
         and cookie workaround.
         """
-        # Launch persistent context
-        context = playwright.chromium.launch_persistent_context(
+        # Launch persistent context.
+        # Default to bundled Patchright Chromium so the skill works even when
+        # system Chrome is already running (which would otherwise refuse to
+        # launch a second instance against an external user-data-dir).
+        # Set NOTEBOOKLM_USE_SYSTEM_CHROME=1 to force channel="chrome" instead.
+        launch_kwargs = dict(
             user_data_dir=user_data_dir,
-            channel="chrome",  # Use real Chrome
             headless=headless,
             no_viewport=True,
             ignore_default_args=["--enable-automation"],
             user_agent=USER_AGENT,
             args=BROWSER_ARGS
         )
+        if os.environ.get("NOTEBOOKLM_USE_SYSTEM_CHROME") == "1":
+            launch_kwargs["channel"] = "chrome"
+        context = playwright.chromium.launch_persistent_context(**launch_kwargs)
 
         # Cookie Workaround for Playwright bug #36139
         # Session cookies (expires=-1) don't persist in user_data_dir automatically

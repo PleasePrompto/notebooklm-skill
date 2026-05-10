@@ -10,6 +10,7 @@ See: https://github.com/microsoft/playwright/issues/36139
 """
 
 import argparse
+import os
 import sys
 import time
 import re
@@ -120,7 +121,8 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         answer = None
         stable_count = 0
         last_text = None
-        deadline = time.time() + 120  # 2 minutes timeout
+        # Default 2 minutes; override via NOTEBOOKLM_ANSWER_TIMEOUT (seconds).
+        deadline = time.time() + int(os.environ.get("NOTEBOOKLM_ANSWER_TIMEOUT", "120"))
 
         while time.time() < deadline:
             # Check if NotebookLM is still thinking (most reliable indicator)
