@@ -79,9 +79,11 @@ TimeoutError: Waiting for selector failed
 
 **Solution:**
 ```bash
-# Kill hanging processes
-pkill -f chromium
+# Kill hanging processes (Linux/Mac)
 pkill -f chrome
+
+# Kill hanging processes (Windows)
+taskkill /F /IM chrome.exe
 
 # Clean browser state
 python scripts/run.py cleanup_manager.py --confirm --preserve-library
@@ -93,14 +95,14 @@ python scripts/run.py auth_manager.py reauth
 #### Browser not found error
 **Solution:**
 ```bash
-# Install Chromium via run.py (automatic)
+# Install Chrome via run.py (automatic)
 python scripts/run.py auth_manager.py status
-# run.py will install Chromium automatically
+# run.py will install Chrome automatically
 
 # Or manual install if needed
 cd ~/.claude/skills/notebooklm
 source .venv/bin/activate
-python -m patchright install chromium
+python -m patchright install chrome
 ```
 
 ### Rate Limiting
@@ -276,7 +278,7 @@ except Exception as e:
 ```bash
 #!/bin/bash
 # Kill processes
-pkill -f chromium
+pkill -f chrome
 
 # Backup library if exists
 if [ -f ~/.claude/skills/notebooklm/data/library.json ]; then
@@ -323,7 +325,7 @@ python scripts/run.py auth_manager.py status
 ### Browser Errors
 | Error | Cause | Solution |
 |-------|-------|----------|
-| Browser not found | Chromium missing | Use run.py (auto-installs) |
+| Browser not found | Chrome missing | Use run.py (auto-installs) |
 | Connection refused | Browser crashed | Kill processes, restart |
 | Timeout waiting | Page slow | Increase timeout |
 | Context closed | Browser terminated | Check logs for crashes |
