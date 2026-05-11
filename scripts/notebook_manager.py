@@ -335,6 +335,15 @@ def main():
     remove_parser = subparsers.add_parser('remove', help='Remove a notebook')
     remove_parser.add_argument('--id', required=True, help='Notebook ID')
 
+    # Update command (exposes update_notebook on the CLI)
+    update_parser = subparsers.add_parser('update', help='Update notebook metadata')
+    update_parser.add_argument('--id', required=True, help='Notebook ID')
+    update_parser.add_argument('--name', help='New display name')
+    update_parser.add_argument('--description', help='New description')
+    update_parser.add_argument('--topics', help='Comma-separated topics (replaces existing)')
+    update_parser.add_argument('--tags', help='Comma-separated tags (replaces existing)')
+    update_parser.add_argument('--url', help='New NotebookLM URL')
+
     # Stats command
     subparsers.add_parser('stats', help='Show library statistics')
 
@@ -389,6 +398,19 @@ def main():
     elif args.command == 'remove':
         if library.remove_notebook(args.id):
             print("Notebook removed from library")
+
+    elif args.command == 'update':
+        topics = [t.strip() for t in args.topics.split(',')] if args.topics else None
+        tags = [t.strip() for t in args.tags.split(',')] if args.tags else None
+        notebook = library.update_notebook(
+            notebook_id=args.id,
+            name=args.name,
+            description=args.description,
+            topics=topics,
+            tags=tags,
+            url=args.url
+        )
+        print(json.dumps(notebook, indent=2))
 
     elif args.command == 'stats':
         stats = library.get_stats()
