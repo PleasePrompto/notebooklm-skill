@@ -49,15 +49,26 @@ class AuthManager:
         self.auth_info_file = AUTH_INFO_FILE
         self.browser_state_dir = BROWSER_STATE_DIR
 
+    # Cookie age thresholds. Soft warning past STALE_WARN_DAYS, hard fail past
+    # STALE_FAIL_DAYS — past that, callers should not assume authentication
+    # is still working without re-running setup.
+    STALE_WARN_DAYS = 7
+    STALE_FAIL_DAYS = 14
+
     def is_authenticated(self) -> bool:
         """Check if valid authentication exists"""
         if not self.state_file.exists():
             return False
 
-        # Check if state file is not too old (7 days)
         age_days = (time.time() - self.state_file.stat().st_mtime) / 86400
-        if age_days > 7:
-            print(f"⚠️ Browser state is {age_days:.1f} days old, may need re-authentication")
+
+        if age_days > self.STALE_FAIL_DAYS:
+            print(f"❌ Browser state is {age_days:.1f} days old — likely expired.")
+            print("   Run: python scripts/run.py auth_manager.py reauth")
+            return False
+
+        if age_days > self.STALE_WARN_DAYS:
+            print(f"⚠️ Browser state is {age_days:.1f} days old, may need re-authentication soon")
 
         return True
 
