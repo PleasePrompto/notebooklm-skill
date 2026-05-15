@@ -57,7 +57,7 @@ class AuthManager:
         # Check if state file is not too old (7 days)
         age_days = (time.time() - self.state_file.stat().st_mtime) / 86400
         if age_days > 7:
-            print(f"⚠️ Browser state is {age_days:.1f} days old, may need re-authentication")
+            print(f"[WARN] Browser state is {age_days:.1f} days old, may need re-authentication")
 
         return True
 
@@ -94,7 +94,7 @@ class AuthManager:
         Returns:
             True if authentication successful
         """
-        print("🔐 Starting authentication setup...")
+        print("[AUTH] Starting authentication setup...")
         print(f"  Timeout: {timeout_minutes} minutes")
 
         playwright = None
@@ -115,20 +115,20 @@ class AuthManager:
 
             # Check if already authenticated
             if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
-                print("  ✅ Already authenticated!")
+                print("  [OK] Already authenticated!")
                 self._save_browser_state(context)
                 return True
 
             # Wait for manual login
-            print("\n  ⏳ Please log in to your Google account...")
-            print(f"  ⏱️  Waiting up to {timeout_minutes} minutes for login...")
+            print("\n  [WAIT] Please log in to your Google account...")
+            print(f"  [TIME] Waiting up to {timeout_minutes} minutes for login...")
 
             try:
                 # Wait for URL to change to NotebookLM (regex ensures it's the actual domain, not a parameter)
                 timeout_ms = int(timeout_minutes * 60 * 1000)
                 page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=timeout_ms)
 
-                print(f"  ✅ Login successful!")
+                print(f"  [OK] Login successful!")
 
                 # Save authentication state
                 self._save_browser_state(context)
@@ -136,11 +136,11 @@ class AuthManager:
                 return True
 
             except Exception as e:
-                print(f"  ❌ Authentication timeout: {e}")
+                print(f"  [FAIL] Authentication timeout: {e}")
                 return False
 
         except Exception as e:
-            print(f"  ❌ Error: {e}")
+            print(f"  [FAIL] Error: {e}")
             return False
 
         finally:
@@ -162,9 +162,9 @@ class AuthManager:
         try:
             # Save storage state (cookies, localStorage)
             context.storage_state(path=str(self.state_file))
-            print(f"  💾 Saved browser state to: {self.state_file}")
+            print(f"  [SAVE] Saved browser state to: {self.state_file}")
         except Exception as e:
-            print(f"  ❌ Failed to save browser state: {e}")
+            print(f"  [FAIL] Failed to save browser state: {e}")
             raise
 
     def _save_auth_info(self):
@@ -186,29 +186,29 @@ class AuthManager:
         Returns:
             True if cleared successfully
         """
-        print("🗑️ Clearing authentication data...")
+        print("[CLEAR] Clearing authentication data...")
 
         try:
             # Remove browser state
             if self.state_file.exists():
                 self.state_file.unlink()
-                print("  ✅ Removed browser state")
+                print("  [OK] Removed browser state")
 
             # Remove auth info
             if self.auth_info_file.exists():
                 self.auth_info_file.unlink()
-                print("  ✅ Removed auth info")
+                print("  [OK] Removed auth info")
 
             # Clear entire browser state directory
             if self.browser_state_dir.exists():
                 shutil.rmtree(self.browser_state_dir)
                 self.browser_state_dir.mkdir(parents=True, exist_ok=True)
-                print("  ✅ Cleared browser data")
+                print("  [OK] Cleared browser data")
 
             return True
 
         except Exception as e:
-            print(f"  ❌ Error clearing auth: {e}")
+            print(f"  [FAIL] Error clearing auth: {e}")
             return False
 
     def re_auth(self, headless: bool = False, timeout_minutes: int = 10) -> bool:
@@ -222,7 +222,7 @@ class AuthManager:
         Returns:
             True if successful
         """
-        print("🔄 Starting re-authentication...")
+        print("[REAUTH] Starting re-authentication...")
 
         # Clear existing auth
         self.clear_auth()
@@ -241,7 +241,7 @@ class AuthManager:
         if not self.is_authenticated():
             return False
 
-        print("🔍 Validating authentication...")
+        print("[CHECK] Validating authentication...")
 
         playwright = None
         context = None
@@ -261,14 +261,14 @@ class AuthManager:
 
             # Check if we can access NotebookLM
             if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
-                print("  ✅ Authentication is valid")
+                print("  [OK] Authentication is valid")
                 return True
             else:
-                print("  ❌ Authentication is invalid (redirected to login)")
+                print("  [FAIL] Authentication is invalid (redirected to login)")
                 return False
 
         except Exception as e:
-            print(f"  ❌ Validation failed: {e}")
+            print(f"  [FAIL] Validation failed: {e}")
             return False
 
         finally:
@@ -316,15 +316,15 @@ def main():
     # Execute command
     if args.command == 'setup':
         if auth.setup_auth(headless=args.headless, timeout_minutes=args.timeout):
-            print("\n✅ Authentication setup complete!")
+            print("\n[OK] Authentication setup complete!")
             print("You can now use ask_question.py to query NotebookLM")
         else:
-            print("\n❌ Authentication setup failed")
+            print("\n[FAIL] Authentication setup failed")
             exit(1)
 
     elif args.command == 'status':
         info = auth.get_auth_info()
-        print("\n🔐 Authentication Status:")
+        print("\n[AUTH] Authentication Status:")
         print(f"  Authenticated: {'Yes' if info['authenticated'] else 'No'}")
         if info.get('state_age_hours'):
             print(f"  State age: {info['state_age_hours']:.1f} hours")
@@ -345,9 +345,9 @@ def main():
 
     elif args.command == 'reauth':
         if auth.re_auth(timeout_minutes=args.timeout):
-            print("\n✅ Re-authentication complete!")
+            print("\n[OK] Re-authentication complete!")
         else:
-            print("\n❌ Re-authentication failed")
+            print("\n[FAIL] Re-authentication failed")
             exit(1)
 
     else:
