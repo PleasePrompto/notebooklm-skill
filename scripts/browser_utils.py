@@ -26,15 +26,24 @@ class BrowserFactory:
         and cookie workaround.
         """
         # Launch persistent context
-        context = playwright.chromium.launch_persistent_context(
+        # channel="chrome" requires system Google Chrome (needs sudo to install on macOS).
+        # Fall back to patchright's bundled chromium build when Chrome is absent.
+        import os as _os
+        _chrome_paths = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        ]
+        _has_chrome = any(_os.path.exists(p) for p in _chrome_paths)
+        _launch_kwargs = dict(
             user_data_dir=user_data_dir,
-            channel="chrome",  # Use real Chrome
             headless=headless,
             no_viewport=True,
             ignore_default_args=["--enable-automation"],
             user_agent=USER_AGENT,
-            args=BROWSER_ARGS
+            args=BROWSER_ARGS,
         )
+        if _has_chrome:
+            _launch_kwargs["channel"] = "chrome"
+        context = playwright.chromium.launch_persistent_context(**_launch_kwargs)
 
         # Cookie Workaround for Playwright bug #36139
         # Session cookies (expires=-1) don't persist in user_data_dir automatically
@@ -66,27 +75,43 @@ class StealthUtils:
 
     @staticmethod
     def human_type(page: Page, selector: str, text: str, wpm_min: int = 320, wpm_max: int = 480):
-        """Type with human-like speed"""
-        element = page.query_selector(selector)
-        if not element:
-            # Try waiting if not immediately found
-            try:
-                element = page.wait_for_selector(selector, timeout=2000)
-            except:
-                pass
-        
-        if not element:
-            print(f"⚠️ Element not found for typing: {selector}")
-            return
+        """Type into a query box that re-renders once during Angular hydration.
 
-        # Click to focus
-        element.click()
-        
-        # Type
-        for char in text:
-            element.type(char, delay=random.uniform(25, 75))
-            if random.random() < 0.05:
-                time.sleep(random.uniform(0.15, 0.4))
+        NotebookLM renders the textarea, then swaps the node ~once shortly after
+        load (and never reaches networkidle, since it long-polls). A cached
+        ElementHandle goes stale mid-type ('Element is not attached to the DOM');
+        a single long settle wait misses the box entirely if the swap lands inside
+        the wait. Fix: a retry loop that RE-LOCATES the box each attempt (Locator
+        API auto-resolves at action time), atomically fills it, and verifies the
+        value actually landed — so whichever instance of the box is live when we
+        act, one attempt succeeds.
+        """
+        deadline = time.time() + 30
+        attempt = 0
+        last_err = None
+        while time.time() < deadline:
+            attempt += 1
+            try:
+                loc = page.locator(selector).first
+                loc.wait_for(state="visible", timeout=5000)
+                loc.click(timeout=3000)
+                loc.fill("", timeout=3000)        # clear any partial text
+                loc.fill(text, timeout=3000)      # atomic set + input event
+                # fill() alone may not fire keydown/keyup, which Angular Material
+                # needs to ENABLE the send button. Fire real key events (net text
+                # unchanged) so the subsequent Enter actually submits.
+                try:
+                    loc.press("Space", timeout=2000)
+                    loc.press("Backspace", timeout=2000)
+                except Exception:
+                    pass
+                val = loc.input_value(timeout=2000)
+                if val and val.strip():
+                    return
+            except Exception as e:
+                last_err = e
+            time.sleep(0.6)
+        print(f"⚠️ human_type failed after {attempt} attempts: {last_err}")
 
     @staticmethod
     def realistic_click(page: Page, selector: str):

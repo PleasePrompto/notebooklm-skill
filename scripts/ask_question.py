@@ -105,11 +105,47 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
+
+        # Baseline the last bot answer BEFORE submitting. NotebookLM persists the
+        # chat thread across browser sessions, so the poll below would otherwise
+        # lock onto the PREVIOUS answer (already stable) and return it instantly.
+        def _last_answer_text():
+            for selector in RESPONSE_SELECTORS:
+                try:
+                    els = page.query_selector_all(selector)
+                    if els:
+                        t = (els[-1].inner_text() or "").strip()
+                        if t:
+                            return t
+                except Exception:
+                    continue
+            return None
+        baseline_text = _last_answer_text()
+
         StealthUtils.human_type(page, input_selector, question)
 
-        # Submit
+        # Submit. NotebookLM's textarea treats Enter as newline after a
+        # programmatic fill(), so click the send button when present and only
+        # fall back to Enter. (Diagnostic confirmed button-click is what fires.)
         print("  📤 Submitting...")
-        page.keyboard.press("Enter")
+        submitted = False
+        for send_sel in [
+            "button[aria-label*='Submit']",
+            "button[aria-label*='Send']",
+            "button[type='submit']",
+            "button.send-button",
+            "[aria-label*='send' i]",
+        ]:
+            try:
+                btn = page.locator(send_sel).first
+                if btn.count() and btn.is_enabled(timeout=1500):
+                    btn.click(timeout=2000)
+                    submitted = True
+                    break
+            except Exception:
+                continue
+        if not submitted:
+            page.keyboard.press("Enter")
 
         # Small pause
         StealthUtils.random_delay(500, 1500)
@@ -141,7 +177,9 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                         latest = elements[-1]
                         text = latest.inner_text().strip()
 
-                        if text:
+                        # Accept only a NEW answer (different from the pre-submit
+                        # baseline), and only once it has stopped streaming.
+                        if text and text != baseline_text:
                             if text == last_text:
                                 stable_count += 1
                                 if stable_count >= 3:  # Stable for 3 polls
