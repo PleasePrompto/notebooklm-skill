@@ -25,7 +25,6 @@ from notebook_manager import NotebookLibrary
 from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
 from browser_utils import BrowserFactory, StealthUtils
 
-
 # Follow-up reminder (adapted from MCP server for stateless operation)
 # Since we don't have persistent sessions, we encourage comprehensive questions
 FOLLOW_UP_REMINDER = (
@@ -67,8 +66,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
         # Launch persistent browser context using factory
         context = BrowserFactory.launch_persistent_context(
-            playwright,
-            headless=headless
+            playwright, headless=headless
         )
 
         # Navigate to notebook
@@ -77,7 +75,9 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         page.goto(notebook_url, wait_until="domcontentloaded")
 
         # Wait for NotebookLM
-        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+        page.wait_for_url(
+            re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000
+        )
 
         # Wait for query input (MCP approach)
         print("  ⏳ Waiting for query input...")
@@ -88,7 +88,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                 query_element = page.wait_for_selector(
                     selector,
                     timeout=10000,
-                    state="visible"  # Only check visibility, not disabled!
+                    state="visible",  # Only check visibility, not disabled!
                 )
                 if query_element:
                     print(f"  ✓ Found input: {selector}")
@@ -102,17 +102,31 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
         # Type question (human-like, fast)
         print("  ⏳ Typing question...")
-        
+
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
+
+        # Snapshot pre-existing response count before submission
+        # (persistent browser profile retains previous conversation DOM)
+        pre_count = 0
+        pre_selector = None
+        for selector in RESPONSE_SELECTORS:
+            try:
+                existing = page.query_selector_all(selector)
+                if existing is not None:
+                    pre_count = len(existing)
+                    pre_selector = selector
+                    break
+            except:
+                continue
 
         # Submit
         print("  📤 Submitting...")
         page.keyboard.press("Enter")
 
-        # Small pause
-        StealthUtils.random_delay(500, 1500)
+        # Wait for UI to begin rendering new response before polling
+        StealthUtils.random_delay(800, 1200)
 
         # Wait for response (MCP approach: poll for stable text)
         print("  ⏳ Waiting for answer...")
@@ -125,8 +139,10 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         while time.time() < deadline:
             # Check if NotebookLM is still thinking (most reliable indicator)
             try:
-                thinking_element = page.query_selector('div.thinking-message')
+                thinking_element = page.query_selector("div.thinking-message")
                 if thinking_element and thinking_element.is_visible():
+                    stable_count = 0  # Reset stability while still thinking
+                    last_text = None
                     time.sleep(1)
                     continue
             except:
@@ -136,20 +152,28 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             for selector in RESPONSE_SELECTORS:
                 try:
                     elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
+                    if not elements:
+                        continue
 
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
+                    # Only read the newest element if a new one has appeared
+                    # This prevents returning stale DOM from a previous session
+                    current_count = len(elements)
+                    effective_pre = pre_count if (pre_selector == selector) else 0
+                    if current_count <= effective_pre:
+                        continue  # No new response element yet
+
+                    latest = elements[-1]
+                    text = latest.inner_text().strip()
+
+                    if text:
+                        if text == last_text:
+                            stable_count += 1
+                            if stable_count >= 3:  # Stable for 3 polls
+                                answer = text
+                                break
+                        else:
+                            stable_count = 0
+                            last_text = text
                 except:
                     continue
 
@@ -169,6 +193,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
     except Exception as e:
         print(f"  ❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -188,12 +213,12 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Ask NotebookLM a question')
+    parser = argparse.ArgumentParser(description="Ask NotebookLM a question")
 
-    parser.add_argument('--question', required=True, help='Question to ask')
-    parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
-    parser.add_argument('--notebook-id', help='Notebook ID from library')
-    parser.add_argument('--show-browser', action='store_true', help='Show browser')
+    parser.add_argument("--question", required=True, help="Question to ask")
+    parser.add_argument("--notebook-url", help="NotebookLM notebook URL")
+    parser.add_argument("--notebook-id", help="Notebook ID from library")
+    parser.add_argument("--show-browser", action="store_true", help="Show browser")
 
     args = parser.parse_args()
 
@@ -204,7 +229,7 @@ def main():
         library = NotebookLibrary()
         notebook = library.get_notebook(args.notebook_id)
         if notebook:
-            notebook_url = notebook['url']
+            notebook_url = notebook["url"]
         else:
             print(f"❌ Notebook '{args.notebook_id}' not found")
             return 1
@@ -214,7 +239,7 @@ def main():
         library = NotebookLibrary()
         active = library.get_active_notebook()
         if active:
-            notebook_url = active['url']
+            notebook_url = active["url"]
             print(f"📚 Using active notebook: {active['name']}")
         else:
             # Show available notebooks
@@ -222,20 +247,26 @@ def main():
             if notebooks:
                 print("\n📚 Available notebooks:")
                 for nb in notebooks:
-                    mark = " [ACTIVE]" if nb.get('id') == library.active_notebook_id else ""
+                    mark = (
+                        " [ACTIVE]"
+                        if nb.get("id") == library.active_notebook_id
+                        else ""
+                    )
                     print(f"  {nb['id']}: {nb['name']}{mark}")
                 print("\nSpecify with --notebook-id or set active:")
                 print("python scripts/run.py notebook_manager.py activate --id ID")
             else:
                 print("❌ No notebooks in library. Add one first:")
-                print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
+                print(
+                    "python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS"
+                )
             return 1
 
     # Ask the question
     answer = ask_notebooklm(
         question=args.question,
         notebook_url=notebook_url,
-        headless=not args.show_browser
+        headless=not args.show_browser,
     )
 
     if answer:
