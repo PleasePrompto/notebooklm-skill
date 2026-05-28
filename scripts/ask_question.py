@@ -3,10 +3,16 @@
 Simple NotebookLM Question Interface
 Based on MCP server implementation - simplified without sessions
 
-Implements hybrid auth approach:
-- Persistent browser profile (user_data_dir) for fingerprint consistency
+Auth approach:
+- Persistent browser profile (user_data_dir) for Google auth state
 - Manual cookie injection from state.json for session cookies (Playwright bug workaround)
-See: https://github.com/microsoft/playwright/issues/36139
+  See: https://github.com/microsoft/playwright/issues/36139
+
+Stale-cache fix:
+- Navigate to notebooklm.google.com root first and wipe IndexedDB/localStorage.
+  NotebookLM caches the full conversation client-side; without this step,
+  every run reloads the accumulated history and the answer-detection loop
+  sees old messages as "already answered".
 """
 
 import argparse
@@ -17,7 +23,6 @@ from pathlib import Path
 
 from patchright.sync_api import sync_playwright
 
-# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
@@ -26,8 +31,6 @@ from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
 from browser_utils import BrowserFactory, StealthUtils
 
 
-# Follow-up reminder (adapted from MCP server for stateless operation)
-# Since we don't have persistent sessions, we encourage comprehensive questions
 FOLLOW_UP_REMINDER = (
     "\n\nEXTREMELY IMPORTANT: Is that ALL you need to know? "
     "You can always ask another question! Think about it carefully: "
@@ -39,7 +42,7 @@ FOLLOW_UP_REMINDER = (
 
 def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
     """
-    Ask a question to NotebookLM
+    Ask a question to NotebookLM and return the answer text.
 
     Args:
         question: Question to ask
@@ -47,7 +50,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         headless: Run browser in headless mode
 
     Returns:
-        Answer text from NotebookLM
+        Answer text from NotebookLM, or None on failure
     """
     auth = AuthManager()
 
@@ -62,34 +65,44 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
     context = None
 
     try:
-        # Start playwright
         playwright = sync_playwright().start()
 
-        # Launch persistent browser context using factory
         context = BrowserFactory.launch_persistent_context(
             playwright,
             headless=headless
         )
 
-        # Navigate to notebook
         page = context.new_page()
+
+        # Wipe IndexedDB/localStorage before loading the notebook.
+        # NotebookLM persists the full conversation in the browser; clearing it
+        # ensures previous-run messages don't contaminate the response detector.
+        try:
+            page.goto("https://notebooklm.google.com/", wait_until="domcontentloaded", timeout=15000)
+            page.evaluate("""async () => {
+                try { localStorage.clear(); } catch(e) {}
+                try { sessionStorage.clear(); } catch(e) {}
+                try {
+                    const dbs = await indexedDB.databases();
+                    await Promise.all(dbs.map(d => new Promise((res, rej) => {
+                        const req = indexedDB.deleteDatabase(d.name);
+                        req.onsuccess = res; req.onerror = rej;
+                    })));
+                } catch(e) {}
+            }""")
+            print("  🧹 Cleared local storage / IndexedDB")
+        except Exception as e:
+            print(f"  ⚠️  Storage clear skipped ({e})")
+
         print("  🌐 Opening notebook...")
         page.goto(notebook_url, wait_until="domcontentloaded")
-
-        # Wait for NotebookLM
         page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
 
-        # Wait for query input (MCP approach)
         print("  ⏳ Waiting for query input...")
         query_element = None
-
         for selector in QUERY_INPUT_SELECTORS:
             try:
-                query_element = page.wait_for_selector(
-                    selector,
-                    timeout=10000,
-                    state="visible"  # Only check visibility, not disabled!
-                )
+                query_element = page.wait_for_selector(selector, timeout=10000, state="visible")
                 if query_element:
                     print(f"  ✓ Found input: {selector}")
                     break
@@ -100,70 +113,75 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             print("  ❌ Could not find query input")
             return None
 
-        # Type question (human-like, fast)
         print("  ⏳ Typing question...")
-        
-        # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
+        # JS focus avoids click being blocked by any lingering overlay backdrop
+        page.evaluate(f"document.querySelector('{input_selector}')?.focus()")
         StealthUtils.human_type(page, input_selector, question)
 
-        # Submit
+        # After clearing IndexedDB the page starts with 0 messages, so any
+        # response that appears is the answer to our question.
+        previous_count = 0
+        previous_answer = None
+
         print("  📤 Submitting...")
         page.keyboard.press("Enter")
 
-        # Small pause
-        StealthUtils.random_delay(500, 1500)
+        # Wait for textarea to clear — reliable confirmation that the question
+        # was accepted by NotebookLM before we start polling for the answer.
+        try:
+            page.wait_for_function(
+                "() => { const el = document.querySelector('textarea.query-box-input'); "
+                "return el && el.value.trim() === ''; }",
+                timeout=15000
+            )
+        except:
+            pass
 
-        # Wait for response (MCP approach: poll for stable text)
         print("  ⏳ Waiting for answer...")
 
         answer = None
         stable_count = 0
-        last_text = None
-        deadline = time.time() + 120  # 2 minutes timeout
+        last_candidate = None
+        deadline = time.time() + 120
 
         while time.time() < deadline:
-            # Check if NotebookLM is still thinking (most reliable indicator)
-            try:
-                thinking_element = page.query_selector('div.thinking-message')
-                if thinking_element and thinking_element.is_visible():
-                    time.sleep(1)
-                    continue
-            except:
-                pass
-
-            # Try to find response with MCP selectors
             for selector in RESPONSE_SELECTORS:
                 try:
                     elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
+                    if not elements:
+                        continue
 
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
+                    text  = elements[-1].inner_text().strip()
+                    count = len(elements)
+
+                    # Accept the response once a new or changed message appears
+                    # and stays stable across 3 consecutive polls (~1.5 s).
+                    is_new_response = (count > previous_count) or (text != previous_answer)
+
+                    if text and is_new_response:
+                        if text == last_candidate:
+                            stable_count += 1
+                            if stable_count >= 3:
+                                answer = text
+                                break
+                        else:
+                            stable_count = 1
+                            last_candidate = text
+                    break  # use only the first selector that returns elements
                 except:
                     continue
 
             if answer:
                 break
 
-            time.sleep(1)
+            time.sleep(0.5)
 
         if not answer:
             print("  ❌ Timeout waiting for answer")
             return None
 
         print("  ✅ Got answer!")
-        # Add follow-up reminder to encourage Claude to ask more questions
         return answer + FOLLOW_UP_REMINDER
 
     except Exception as e:
@@ -173,13 +191,11 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         return None
 
     finally:
-        # Always clean up
         if context:
             try:
                 context.close()
             except:
                 pass
-
         if playwright:
             try:
                 playwright.stop()
@@ -189,15 +205,12 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
 def main():
     parser = argparse.ArgumentParser(description='Ask NotebookLM a question')
-
     parser.add_argument('--question', required=True, help='Question to ask')
     parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook ID from library')
     parser.add_argument('--show-browser', action='store_true', help='Show browser')
-
     args = parser.parse_args()
 
-    # Resolve notebook URL
     notebook_url = args.notebook_url
 
     if not notebook_url and args.notebook_id:
@@ -210,14 +223,12 @@ def main():
             return 1
 
     if not notebook_url:
-        # Check for active notebook first
         library = NotebookLibrary()
         active = library.get_active_notebook()
         if active:
             notebook_url = active['url']
             print(f"📚 Using active notebook: {active['name']}")
         else:
-            # Show available notebooks
             notebooks = library.list_notebooks()
             if notebooks:
                 print("\n📚 Available notebooks:")
@@ -228,10 +239,10 @@ def main():
                 print("python scripts/run.py notebook_manager.py activate --id ID")
             else:
                 print("❌ No notebooks in library. Add one first:")
-                print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
+                print("python scripts/run.py notebook_manager.py add --url URL --name NAME "
+                      "--description DESC --topics TOPICS")
             return 1
 
-    # Ask the question
     answer = ask_notebooklm(
         question=args.question,
         notebook_url=notebook_url,

@@ -25,21 +25,16 @@ class BrowserFactory:
         Launch a persistent browser context with anti-detection features
         and cookie workaround.
         """
-        # Launch persistent context
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
-            channel="chrome",  # Use real Chrome
+            channel="chrome",
             headless=headless,
             no_viewport=True,
             ignore_default_args=["--enable-automation"],
             user_agent=USER_AGENT,
             args=BROWSER_ARGS
         )
-
-        # Cookie Workaround for Playwright bug #36139
-        # Session cookies (expires=-1) don't persist in user_data_dir automatically
         BrowserFactory._inject_cookies(context)
-
         return context
 
     @staticmethod
@@ -51,7 +46,6 @@ class BrowserFactory:
                     state = json.load(f)
                     if 'cookies' in state and len(state['cookies']) > 0:
                         context.add_cookies(state['cookies'])
-                        # print(f"  🔧 Injected {len(state['cookies'])} cookies from state.json")
             except Exception as e:
                 print(f"  ⚠️  Could not load state.json: {e}")
 
@@ -79,8 +73,11 @@ class StealthUtils:
             print(f"⚠️ Element not found for typing: {selector}")
             return
 
-        # Click to focus
-        element.click()
+        # Focus with force to bypass any overlay backdrops
+        try:
+            element.click(force=True)
+        except:
+            pass
         
         # Type
         for char in text:
