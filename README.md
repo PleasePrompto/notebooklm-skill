@@ -110,6 +110,23 @@ Claude will list your available skills including NotebookLM.
 
 ### 3. Create your knowledge base
 
+**Option A: Automated — create a notebook and bulk-upload local files**
+
+If you already have local source files (`.txt`, `.md`, `.pdf`), Claude can create the notebook and upload them for you using the authenticated browser:
+
+```
+"Create a NotebookLM notebook called 'My Docs' from the files in ./sources"
+```
+
+Under the hood:
+```bash
+python scripts/run.py add_sources.py --sources-dir ./sources --name "My Docs"
+# --headless to hide the browser, --keep-open to leave it open, --probe to inspect the UI
+```
+This creates a new notebook, bulk-uploads every file in the directory in one shot, renames the notebook, and prints the notebook URL — which you can then add to your library (step 4).
+
+**Option B: Manual**
+
 Go to [notebooklm.google.com](https://notebooklm.google.com) → Create notebook → Upload your docs:
 - 📄 PDFs, Google Docs, markdown files
 - 🔗 Websites, GitHub repos
@@ -164,6 +181,7 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 ├── SKILL.md              # Instructions for Claude
 ├── scripts/              # Python automation scripts
 │   ├── ask_question.py   # Query NotebookLM
+│   ├── add_sources.py    # Create a notebook & bulk-upload local files
 │   ├── notebook_manager.py # Library management
 │   └── auth_manager.py   # Google authentication
 ├── .venv/                # Isolated Python environment (auto-created)
@@ -206,6 +224,7 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 | What you say | What happens |
 |--------------|--------------|
 | *"Set up NotebookLM authentication"* | Opens Chrome for Google login |
+| *"Create a notebook from these files"* | Creates a notebook & bulk-uploads local sources |
 | *"Add [link] to my NotebookLM library"* | Saves notebook with metadata |
 | *"Show my NotebookLM notebooks"* | Lists all saved notebooks |
 | *"Ask my API docs about [topic]"* | Queries the relevant notebook |
@@ -301,7 +320,7 @@ For multi-step research, Claude automatically asks follow-up questions when need
 
 ### NotebookLM
 - **Rate limits** - Free tier has daily query limits
-- **Manual upload** - You must upload docs to NotebookLM first
+- **Upload** - Local files (`.txt`/`.md`/`.pdf`) can be auto-uploaded via `add_sources.py`; other source types (websites, YouTube, Drive) are still added manually in NotebookLM
 - **Share requirement** - Notebooks must be shared publicly
 
 ---
