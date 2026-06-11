@@ -52,7 +52,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
     auth = AuthManager()
 
     if not auth.is_authenticated():
-        print("⚠️ Not authenticated. Run: python auth_manager.py setup")
+        print("⚠️ Not authenticated. Run: python3 auth_manager.py setup")
         return None
 
     print(f"💬 Asking: {question}")
@@ -106,45 +106,83 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
 
-        # Baseline the last bot answer BEFORE submitting. NotebookLM persists the
-        # chat thread across browser sessions, so the poll below would otherwise
-        # lock onto the PREVIOUS answer (already stable) and return it instantly.
-        def _last_answer_text():
+        # Snapshot EXISTING bot answers BEFORE submitting. NotebookLM persists the
+        # chat thread across browser sessions, so without this the poll locks onto
+        # the PREVIOUS answer and returns it instantly (verified 2026-06-11: a fresh
+        # question returned the prior query's stale answer). We settle until the
+        # persisted thread stops growing, then gate acceptance on a NEW container
+        # appearing (count increase) — text-inequality alone races the thread-render
+        # and can miss the baseline.
+        def _answer_texts():
             for selector in RESPONSE_SELECTORS:
                 try:
                     els = page.query_selector_all(selector)
                     if els:
-                        t = (els[-1].inner_text() or "").strip()
-                        if t:
-                            return t
+                        return [(e.inner_text() or "").strip() for e in els]
                 except Exception:
                     continue
-            return None
-        baseline_text = _last_answer_text()
+            return []
+
+        # settle: wait for the persisted thread to finish rendering (count stable)
+        _prev, _stable, _settle_deadline = -1, 0, time.time() + 12
+        while time.time() < _settle_deadline:
+            _cur = len(_answer_texts())
+            if _cur == _prev:
+                _stable += 1
+                if _stable >= 3:
+                    break
+            else:
+                _stable, _prev = 0, _cur
+            time.sleep(0.6)
+        _pre_texts = _answer_texts()
+        pre_count = len(_pre_texts)
+        baseline_text = _pre_texts[-1] if _pre_texts else None
 
         StealthUtils.human_type(page, input_selector, question)
 
-        # Submit. NotebookLM's textarea treats Enter as newline after a
-        # programmatic fill(), so click the send button when present and only
-        # fall back to Enter. (Diagnostic confirmed button-click is what fires.)
+        # Submit. The send button is LOCALE-DEPENDENT (e.g. Thai 'ส่ง', icon
+        # 'arrow_forward') and only ENABLES once real key events land, so match it
+        # by aria-label/icon across languages and nudge with a real keystroke until
+        # it is clickable. The old English-only ['Send'/'Submit'] list missed the
+        # localized button, and the 'button[type=submit]' fallback clicked the WRONG
+        # submit element → silent no-send → the 120s answer timeout. (Diagnosed
+        # 2026-06-11: account UI in Thai; auth/notebook-load/response-read all fine.)
         print("  📤 Submitting...")
-        submitted = False
-        for send_sel in [
-            "button[aria-label*='Submit']",
-            "button[aria-label*='Send']",
-            "button[type='submit']",
-            "button.send-button",
-            "[aria-label*='send' i]",
-        ]:
-            try:
-                btn = page.locator(send_sel).first
-                if btn.count() and btn.is_enabled(timeout=1500):
-                    btn.click(timeout=2000)
-                    submitted = True
-                    break
-            except Exception:
-                continue
-        if not submitted:
+
+        def _click_send():
+            find_js = """() => {
+              const btns = [...document.querySelectorAll('button')];
+              const cand = btns.find(b => {
+                if (b.disabled) return false;
+                const al = (b.getAttribute('aria-label') || '');
+                const mi = b.querySelector('mat-icon');
+                const ic = mi ? ((mi.getAttribute('fonticon') || mi.textContent) || '').trim() : '';
+                return /send|submit|ส่ง/i.test(al) ||
+                       ['send', 'arrow_forward', 'arrow_upward'].includes(ic);
+              });
+              return cand || null;
+            }"""
+            end = time.time() + 8
+            while time.time() < end:
+                try:
+                    el = page.evaluate_handle(find_js).as_element()
+                    if el:
+                        el.click(timeout=2000)
+                        return True
+                except Exception:
+                    pass
+                # real-key nudge: enables an Angular send button left disabled by fill()
+                try:
+                    page.locator(input_selector).first.click(timeout=1000)
+                    page.keyboard.type(" ")
+                    page.keyboard.press("Backspace")
+                except Exception:
+                    pass
+                time.sleep(0.5)
+            return False
+
+        if not _click_send():
+            print("  ⚠️ send button not found/enabled — falling back to Enter")
             page.keyboard.press("Enter")
 
         # Small pause
@@ -156,43 +194,35 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         answer = None
         stable_count = 0
         last_text = None
+        _PLACEHOLDERS = ("finding relevant info", "finding sources", "analyzing")
         deadline = time.time() + 120  # 2 minutes timeout
 
         while time.time() < deadline:
-            # Check if NotebookLM is still thinking (most reliable indicator)
+            # Skip while NotebookLM is still thinking (most reliable indicator)
             try:
                 thinking_element = page.query_selector('div.thinking-message')
                 if thinking_element and thinking_element.is_visible():
                     time.sleep(1)
                     continue
-            except:
+            except Exception:
                 pass
 
-            # Try to find response with MCP selectors
-            for selector in RESPONSE_SELECTORS:
-                try:
-                    elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
-
-                        # Accept only a NEW answer (different from the pre-submit
-                        # baseline), and only once it has stopped streaming.
-                        if text and text != baseline_text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
-                except:
-                    continue
-
-            if answer:
-                break
+            texts = _answer_texts()
+            # Require a genuinely NEW answer container vs the pre-submit snapshot,
+            # then wait for its text to stop streaming.
+            if len(texts) > pre_count:
+                text = texts[-1]
+                low = text.lower()
+                is_placeholder = (not text) or any(p in low for p in _PLACEHOLDERS)
+                if text and not is_placeholder and text != baseline_text:
+                    if text == last_text:
+                        stable_count += 1
+                        if stable_count >= 3:  # Stable for 3 polls
+                            answer = text
+                            break
+                    else:
+                        stable_count = 0
+                        last_text = text
 
             time.sleep(1)
 
@@ -263,10 +293,10 @@ def main():
                     mark = " [ACTIVE]" if nb.get('id') == library.active_notebook_id else ""
                     print(f"  {nb['id']}: {nb['name']}{mark}")
                 print("\nSpecify with --notebook-id or set active:")
-                print("python scripts/run.py notebook_manager.py activate --id ID")
+                print("python3 scripts/run.py notebook_manager.py activate --id ID")
             else:
                 print("❌ No notebooks in library. Add one first:")
-                print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
+                print("python3 scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
             return 1
 
     # Ask the question
