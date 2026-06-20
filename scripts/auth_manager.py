@@ -259,13 +259,51 @@ class AuthManager:
             page = context.new_page()
             page.goto("https://notebooklm.google.com", wait_until="domcontentloaded", timeout=30000)
 
-            # Check if we can access NotebookLM
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
-                print("  ✅ Authentication is valid")
-                return True
-            else:
+            # Home-page gate (cheap). A stale-but-not-dead session passes this even
+            # when a real NOTEBOOK load would bounce to sign-in (verified 2026-06-20:
+            # home OK while /notebook/<id> redirected to accounts.google.com). So this
+            # is necessary, not sufficient.
+            if not ("notebooklm.google.com" in page.url and "accounts.google.com" not in page.url):
                 print("  ❌ Authentication is invalid (redirected to login)")
                 return False
+
+            # Notebook-level gate (the REAL usage path). Load the first library
+            # notebook and require the query input to actually render — this is what
+            # ask_question depends on and is the surface that fails first as the
+            # session decays. Skip only if the library is empty.
+            from config import LIBRARY_FILE, QUERY_INPUT_SELECTORS
+            nb_url = None
+            try:
+                if LIBRARY_FILE.exists():
+                    with open(LIBRARY_FILE, 'r') as f:
+                        nbs = (json.load(f) or {}).get("notebooks", {})
+                    nb_url = next((n.get("url") for n in nbs.values() if n.get("url")), None)
+            except Exception:
+                nb_url = None
+
+            if not nb_url:
+                print("  ✅ Authentication is valid (home-only; no library notebook to deep-check)")
+                return True
+
+            page.goto(nb_url, wait_until="domcontentloaded", timeout=30000)
+            # SSO passive flow can bounce a few times before settling — wait for it.
+            settle = time.time() + 25
+            while time.time() < settle:
+                if "accounts.google.com" not in page.url and "notebooklm.google.com" in page.url:
+                    break
+                time.sleep(1)
+            if "accounts.google.com" in page.url:
+                print("  ❌ Authentication STALE — notebook load redirected to sign-in (run reauth)")
+                return False
+            for sel in QUERY_INPUT_SELECTORS:
+                try:
+                    if page.wait_for_selector(sel, timeout=8000, state="visible"):
+                        print("  ✅ Authentication is valid (notebook query input rendered)")
+                        return True
+                except Exception:
+                    continue
+            print("  ❌ Authentication STALE — notebook loaded but query input never rendered (run reauth)")
+            return False
 
         except Exception as e:
             print(f"  ❌ Validation failed: {e}")

@@ -135,8 +135,17 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                 _stable, _prev = 0, _cur
             time.sleep(0.6)
         _pre_texts = _answer_texts()
-        pre_count = len(_pre_texts)
-        baseline_text = _pre_texts[-1] if _pre_texts else None
+        # Multiset snapshot of the persisted thread's answers. Two artifacts make a
+        # naive gate fail (both verified 2026-06-20):
+        #   1) the new answer is NOT reliably the DOM-last container — NotebookLM does
+        #      not render the thread strictly chronologically, and the count may not
+        #      grow, so neither texts[-1] nor len()>pre_count detects it.
+        #   2) an answer can be textually identical to an earlier one (e.g. the same
+        #      question asked twice), so plain set-membership novelty rejects it.
+        # Counter handles both: the fresh answer is the text whose occurrence count is
+        # now HIGHER than before submit, found at any index.
+        from collections import Counter
+        baseline_counter = Counter(_pre_texts)
 
         StealthUtils.human_type(page, input_selector, question)
 
@@ -208,21 +217,27 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                 pass
 
             texts = _answer_texts()
-            # Require a genuinely NEW answer container vs the pre-submit snapshot,
-            # then wait for its text to stop streaming.
-            if len(texts) > pre_count:
-                text = texts[-1]
-                low = text.lower()
-                is_placeholder = (not text) or any(p in low for p in _PLACEHOLDERS)
-                if text and not is_placeholder and text != baseline_text:
-                    if text == last_text:
-                        stable_count += 1
-                        if stable_count >= 3:  # Stable for 3 polls
-                            answer = text
-                            break
-                    else:
-                        stable_count = 0
-                        last_text = text
+            # The fresh answer = a text that now occurs MORE times than it did before
+            # submit (Counter delta), located at any index — robust to both the
+            # non-chronological render order and to answers that duplicate an earlier
+            # reply. Pick the longest such candidate (the substantive reply, not a
+            # one-line echo), then wait for it to stop streaming.
+            cur_counter = Counter(texts)
+            new_texts = [
+                t for t in cur_counter
+                if t and cur_counter[t] > baseline_counter[t]
+                and not any(p in t.lower() for p in _PLACEHOLDERS)
+            ]
+            if new_texts:
+                text = max(new_texts, key=len)
+                if text == last_text:
+                    stable_count += 1
+                    if stable_count >= 3:  # Stable for 3 polls
+                        answer = text
+                        break
+                else:
+                    stable_count = 0
+                    last_text = text
 
             time.sleep(1)
 
@@ -231,6 +246,17 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             return None
 
         print("  ✅ Got answer!")
+        # Persist the session on every successful query so continuous use actually
+        # EXTENDS auth instead of letting it decay. The state.json session cookies
+        # (the bug #36139 workaround set) are otherwise frozen at login time and never
+        # refreshed by this read path — so without this, even daily use eventually
+        # forces a manual reauth when Google rotates them (verified 2026-06-20: 3
+        # successful asks left state.json mtime untouched). Best-effort: a save
+        # failure must not lose the answer we already have.
+        try:
+            auth._save_browser_state(context)
+        except Exception as _e:
+            print(f"  ⚠️  Could not refresh saved session (non-fatal): {_e}")
         # Add follow-up reminder to encourage Claude to ask more questions
         return answer + FOLLOW_UP_REMINDER
 
