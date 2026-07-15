@@ -37,6 +37,44 @@ FOLLOW_UP_REMINDER = (
 )
 
 
+def _get_latest_response(page):
+    """Return (text, element_count) for the visually most recent chat response.
+
+    NotebookLM's virtualized chat list leaves stale, off-screen DOM nodes
+    (from earlier messages in the same server-side conversation history)
+    matching RESPONSE_SELECTORS *after* the live messages in DOM order, so
+    picking elements[-1] can return a stale answer. The real latest message
+    is always scrolled to the bottom of the page, i.e. it has the largest
+    bounding-box Y among matches, so select by visual position instead.
+    """
+    for selector in RESPONSE_SELECTORS:
+        try:
+            elements = page.query_selector_all(selector)
+        except:
+            continue
+        if not elements:
+            continue
+
+        best_el, best_y = None, None
+        for el in elements:
+            try:
+                box = el.bounding_box()
+            except:
+                continue
+            if not box:
+                continue
+            if best_y is None or box["y"] > best_y:
+                best_y, best_el = box["y"], el
+
+        if best_el is not None:
+            try:
+                return best_el.inner_text().strip(), len(elements)
+            except:
+                continue
+
+    return None, 0
+
+
 def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
     """
     Ask a question to NotebookLM
@@ -100,9 +138,16 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             print("  ❌ Could not find query input")
             return None
 
+        # Capture baseline BEFORE submitting: NotebookLM persists chat history
+        # per-notebook (server-side), so a fresh browser session can already
+        # show a previous answer in the DOM. Without a baseline, the stability
+        # check below can lock onto that stale answer before the new one ever
+        # starts streaming.
+        baseline_text, baseline_count = _get_latest_response(page)
+
         # Type question (human-like, fast)
         print("  ⏳ Typing question...")
-        
+
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
@@ -114,7 +159,30 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Small pause
         StealthUtils.random_delay(500, 1500)
 
-        # Wait for response (MCP approach: poll for stable text)
+        # Phase 1: wait for a genuinely NEW response to appear (more elements
+        # than baseline, or the last element's text differs from baseline).
+        # This guards against reading a stale answer left over from a
+        # previous session's chat history.
+        print("  ⏳ Waiting for new response to start...")
+        new_response_deadline = time.time() + 60
+        new_response_started = False
+
+        while time.time() < new_response_deadline:
+            current_text, current_count = _get_latest_response(page)
+
+            if current_count > baseline_count or (
+                current_text and current_text != baseline_text
+            ):
+                new_response_started = True
+                break
+
+            time.sleep(0.5)
+
+        if not new_response_started:
+            print("  ❌ Timeout waiting for a new response to start (only saw stale/previous answer)")
+            return None
+
+        # Phase 2: wait for response (MCP approach: poll for stable text)
         print("  ⏳ Waiting for answer...")
 
         answer = None
@@ -123,7 +191,8 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         deadline = time.time() + 120  # 2 minutes timeout
 
         while time.time() < deadline:
-            # Check if NotebookLM is still thinking (most reliable indicator)
+            # Check if NotebookLM is still thinking (best-effort; selector may
+            # not match current UI, so this is a bonus signal, not load-bearing)
             try:
                 thinking_element = page.query_selector('div.thinking-message')
                 if thinking_element and thinking_element.is_visible():
@@ -132,26 +201,17 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             except:
                 pass
 
-            # Try to find response with MCP selectors
-            for selector in RESPONSE_SELECTORS:
-                try:
-                    elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
+            # Find the visually latest response (bottom-most on screen)
+            text, _ = _get_latest_response(page)
 
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
-                except:
-                    continue
+            if text:
+                if text == last_text:
+                    stable_count += 1
+                    if stable_count >= 3:  # Stable for 3 polls
+                        answer = text
+                else:
+                    stable_count = 0
+                    last_text = text
 
             if answer:
                 break
@@ -161,6 +221,9 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         if not answer:
             print("  ❌ Timeout waiting for answer")
             return None
+
+        if answer == baseline_text:
+            print("  ⚠️  Warning: captured answer matches the pre-existing (stale) answer")
 
         print("  ✅ Got answer!")
         # Add follow-up reminder to encourage Claude to ask more questions
