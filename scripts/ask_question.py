@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
-from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
+from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS, NOTEBOOK_TITLE_SELECTORS
 from browser_utils import BrowserFactory, StealthUtils
 
 
@@ -35,6 +35,53 @@ FOLLOW_UP_REMINDER = (
     "If anything is still unclear or missing, ask me another comprehensive question "
     "that includes all necessary context (since each question opens a new browser session)."
 )
+
+
+def detect_notebook_title(page) -> str:
+    """
+    Detect the actual notebook title from the NotebookLM page.
+    Uses page.title() which contains "Notebook Name - Gemini Notebook".
+    Returns the notebook name if found, None otherwise.
+    """
+    try:
+        page_title = page.title()
+        if page_title and " - Gemini Notebook" in page_title:
+            return page_title.replace(" - Gemini Notebook", "").strip()
+        elif page_title and " - NotebookLM" in page_title:
+            return page_title.replace(" - NotebookLM", "").strip()
+    except:
+        pass
+
+    # Fallback: try DOM selectors
+    for selector in NOTEBOOK_TITLE_SELECTORS:
+        try:
+            element = page.query_selector(selector)
+            if element:
+                title = element.inner_text().strip()
+                if title and len(title) > 0 and len(title) < 200:
+                    return title
+        except:
+            continue
+    return None
+
+
+def sync_notebook_title(notebook_url: str, detected_title: str):
+    """
+    Update the local library if the detected title differs from stored name.
+    """
+    if not detected_title:
+        return
+
+    library = NotebookLibrary()
+
+    # Find notebook by URL
+    for notebook_id, notebook in library.notebooks.items():
+        if notebook['url'] == notebook_url:
+            stored_name = notebook.get('name', '')
+            if stored_name != detected_title:
+                print(f"  📝 Title sync: '{stored_name}' → '{detected_title}'")
+                library.update_notebook(notebook_id, name=detected_title)
+            return
 
 
 def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
@@ -79,6 +126,13 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         # Wait for NotebookLM
         page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
 
+        # Detect and sync notebook title
+        time.sleep(1)  # Allow page to render title
+        detected_title = detect_notebook_title(page)
+        if detected_title:
+            print(f"  📓 Notebook: {detected_title}")
+            sync_notebook_title(notebook_url, detected_title)
+
         # Wait for query input (MCP approach)
         print("  ⏳ Waiting for query input...")
         query_element = None
@@ -100,26 +154,65 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             print("  ❌ Could not find query input")
             return None
 
-        # Type question (human-like, fast)
+        # Type question
         print("  ⏳ Typing question...")
-        
+
         # Use primary selector for typing
         input_selector = QUERY_INPUT_SELECTORS[0]
         StealthUtils.human_type(page, input_selector, question)
+
+        # Verify the question was typed correctly
+        time.sleep(0.3)
+        try:
+            typed_text = page.input_value(input_selector)
+            if typed_text != question:
+                print(f"  ⚠️ Question mismatch! Expected: '{question[:50]}...'")
+                print(f"  ⚠️ Got: '{typed_text[:50]}...'")
+            else:
+                print(f"  ✓ Question verified ({len(question)} chars)")
+        except Exception as e:
+            print(f"  ⚠️ Could not verify question: {e}")
+
+        # Wait for chat history to load before capturing baseline
+        # This ensures we don't miscount async-loaded history as "new" responses
+        primary_selector = RESPONSE_SELECTORS[0]  # Use consistent selector
+        print("  📊 Waiting for chat history to load...")
+        time.sleep(3)  # Give time for existing responses to render
+
+        # Poll until response count stabilizes (history fully loaded)
+        initial_response_count = 0
+        baseline_texts = set()  # Store hashes of ALL existing response texts
+        stable_history_count = 0
+        for _ in range(10):  # Max 10 attempts
+            try:
+                elements = page.query_selector_all(primary_selector)
+                current_count = len(elements) if elements else 0
+                if current_count == initial_response_count:
+                    stable_history_count += 1
+                    if stable_history_count >= 2:
+                        # Use hash of full text to handle similar responses
+                        baseline_texts = {hash(el.inner_text().strip()) for el in elements}
+                        break
+                else:
+                    initial_response_count = current_count
+                    stable_history_count = 0
+            except:
+                pass
+            time.sleep(0.5)
+
+        print(f"  📊 Existing responses: {initial_response_count}")
 
         # Submit
         print("  📤 Submitting...")
         page.keyboard.press("Enter")
 
-        # Small pause
-        StealthUtils.random_delay(500, 1500)
-
-        # Wait for response (MCP approach: poll for stable text)
+        # Wait for response - must be a NEW response (count > initial)
         print("  ⏳ Waiting for answer...")
 
         answer = None
         stable_count = 0
         last_text = None
+        new_response_detected = False
         deadline = time.time() + 120  # 2 minutes timeout
 
         while time.time() < deadline:
@@ -132,26 +225,35 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             except:
                 pass
 
-            # Try to find response with MCP selectors
-            for selector in RESPONSE_SELECTORS:
-                try:
-                    elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
+            # Check for new response by finding text NOT in baseline
+            try:
+                elements = page.query_selector_all(primary_selector)
+                current_count = len(elements) if elements else 0
 
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
-                except:
-                    continue
+                # Find the NEW response - one whose hash isn't in our baseline
+                new_text = None
+                for el in elements:
+                    text = el.inner_text().strip()
+                    text_hash = hash(text)
+                    if text_hash not in baseline_texts and text:
+                        new_text = text
+                        break
+
+                if new_text:
+                    if not new_response_detected:
+                        print(f"  ✨ New response detected (count: {initial_response_count} → {current_count})")
+                        new_response_detected = True
+
+                    if new_text == last_text:
+                        stable_count += 1
+                        if stable_count >= 3:  # Stable for 3 polls
+                            answer = new_text
+                            break
+                    else:
+                        stable_count = 0
+                        last_text = new_text
+            except:
+                pass
 
             if answer:
                 break

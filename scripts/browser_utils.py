@@ -66,27 +66,27 @@ class StealthUtils:
 
     @staticmethod
     def human_type(page: Page, selector: str, text: str, wpm_min: int = 320, wpm_max: int = 480):
-        """Type with human-like speed"""
-        element = page.query_selector(selector)
-        if not element:
-            # Try waiting if not immediately found
-            try:
-                element = page.wait_for_selector(selector, timeout=2000)
-            except:
-                pass
-        
-        if not element:
+        """Type with human-like speed, resilient to DOM re-renders"""
+        # Wait for element to be available
+        try:
+            page.wait_for_selector(selector, timeout=5000, state="visible")
+        except:
             print(f"⚠️ Element not found for typing: {selector}")
             return
 
-        # Click to focus
-        element.click()
-        
-        # Type
-        for char in text:
-            element.type(char, delay=random.uniform(25, 75))
-            if random.random() < 0.05:
-                time.sleep(random.uniform(0.15, 0.4))
+        # Click to focus using selector (re-queries DOM)
+        page.click(selector)
+        time.sleep(0.1)
+
+        # Use page.fill() which is more resilient to re-renders
+        # It clears and sets the value in one operation
+        try:
+            page.fill(selector, text)
+        except Exception as e:
+            # Fallback: type character by character using page.type()
+            # which re-queries the selector for each operation
+            print(f"  ⚠️ fill() failed, trying type(): {e}")
+            page.type(selector, text, delay=50)
 
     @staticmethod
     def realistic_click(page: Page, selector: str):

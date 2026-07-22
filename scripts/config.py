@@ -27,6 +27,17 @@ RESPONSE_SELECTORS = [
     "[data-message-author='assistant']",
 ]
 
+# Notebook title selectors (for syncing with actual NotebookLM name)
+NOTEBOOK_TITLE_SELECTORS = [
+    "h1.notebook-title",              # Primary title element
+    "[data-notebook-title]",          # Data attribute
+    "header h1",                       # Generic header h1
+    ".notebook-header h1",            # Header container
+    "h1[contenteditable]",            # Editable title field
+    "[aria-label='Notebook title']",  # Accessibility label
+    "h1",                              # Fallback to any h1
+]
+
 # Browser Configuration
 BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver
