@@ -288,7 +288,10 @@ class AuthManager:
             _close_session(playwright, context)
             return None, None
 
-        except Exception:
+        except Exception as e:
+            # A launch/navigation failure is not "not logged in" — surface it so the
+            # caller doesn't misreport a broken browser install as an auth redirect.
+            print(f"  ⚠️ Session probe failed: {e}")
             _close_session(playwright, context)
             return None, None
 
@@ -340,6 +343,11 @@ class AuthManager:
             self._save_auth_info()
             print("  ✅ State saved. Authentication is now recognized.")
             return True
+        except Exception:
+            # _save_browser_state already printed the cause; return a clean failure
+            # instead of letting the re-raised exception escape as an uncaught traceback.
+            print("  ❌ Finalize failed while saving state (see message above).")
+            return False
         finally:
             _close_session(playwright, context)
 
