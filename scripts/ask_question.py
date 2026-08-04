@@ -12,7 +12,6 @@ See: https://github.com/microsoft/playwright/issues/36139
 import argparse
 import sys
 import time
-import re
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -22,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
-from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
+from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS, is_notebook_url
 from browser_utils import BrowserFactory, StealthUtils
 
 
@@ -76,8 +75,8 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         print("  🌐 Opening notebook...")
         page.goto(notebook_url, wait_until="domcontentloaded")
 
-        # Wait for NotebookLM
-        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+        # Wait for NotebookLM (signed-in page on either host; rejects the /login route)
+        page.wait_for_url(is_notebook_url, timeout=10000)
 
         # Wait for query input (MCP approach)
         print("  ⏳ Waiting for query input...")

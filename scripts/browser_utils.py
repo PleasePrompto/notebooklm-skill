@@ -25,10 +25,15 @@ class BrowserFactory:
         Launch a persistent browser context with anti-detection features
         and cookie workaround.
         """
-        # Launch persistent context
+        # Launch persistent context.
+        # NOTE: we deliberately do NOT pass channel="chrome". Using the system Chrome
+        # conflicts with an already-running Chrome instance: the new process hands the
+        # request to the existing one and exits, so the window opens under the user's
+        # own profile and this user_data_dir never receives any cookies (no
+        # Default/Network/Cookies is ever written). Patchright's bundled Chromium is
+        # isolated, keeps its anti-detection patches, and works while Chrome is open.
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
-            channel="chrome",  # Use real Chrome
             headless=headless,
             no_viewport=True,
             ignore_default_args=["--enable-automation"],
