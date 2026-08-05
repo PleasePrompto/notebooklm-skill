@@ -100,6 +100,23 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             print("  ❌ Could not find query input")
             return None
 
+        # NotebookLM's chat history persists per-notebook across sessions, so on
+        # a notebook that's already been queried before, the response selectors
+        # below will match old turns too. Wait briefly for that history to finish
+        # rendering, then record how many response elements already exist — a new
+        # answer means this count goes up, which is immune to the race where the
+        # last element's *text* happens to still be settling when we check it.
+        page.wait_for_timeout(2000)
+        baseline_count = 0
+        for selector in RESPONSE_SELECTORS:
+            try:
+                elements = page.query_selector_all(selector)
+                if elements:
+                    baseline_count = len(elements)
+                    break
+            except Exception:
+                continue
+
         # Type question (human-like, fast)
         print("  ⏳ Typing question...")
         
@@ -136,8 +153,10 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
             for selector in RESPONSE_SELECTORS:
                 try:
                     elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
+                    # A genuinely new turn means a new element was appended —
+                    # not just that the last element's text changed, which can
+                    # be mid-render and falsely look "different" from baseline.
+                    if elements and len(elements) > baseline_count:
                         latest = elements[-1]
                         text = latest.inner_text().strip()
 
