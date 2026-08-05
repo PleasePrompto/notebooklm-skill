@@ -9,6 +9,20 @@ import sys
 import subprocess
 from pathlib import Path
 
+# Windows consoles default to a legacy codepage (cp1252) that can't encode
+# the emoji used in this script's status output; force UTF-8 so those prints
+# don't crash before the venv even gets created.
+if os.name == 'nt':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# Child Python processes spawned below don't inherit this reconfiguration
+# (each gets a fresh interpreter that re-reads the Windows console codepage),
+# so force UTF-8 I/O on them via the environment instead.
+SUBPROCESS_ENV = os.environ.copy()
+SUBPROCESS_ENV['PYTHONIOENCODING'] = 'utf-8'
+SUBPROCESS_ENV['PYTHONUTF8'] = '1'
+
 
 def get_venv_python():
     """Get the virtual environment Python executable"""
@@ -35,7 +49,7 @@ def ensure_venv():
         print("   This may take a minute...")
 
         # Run setup with system Python
-        result = subprocess.run([sys.executable, str(setup_script)])
+        result = subprocess.run([sys.executable, str(setup_script)], env=SUBPROCESS_ENV)
         if result.returncode != 0:
             print("❌ Failed to set up environment")
             sys.exit(1)
@@ -88,7 +102,7 @@ def main():
 
     # Run the script
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, env=SUBPROCESS_ENV)
         sys.exit(result.returncode)
     except KeyboardInterrupt:
         print("\n⚠️ Interrupted by user")

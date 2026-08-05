@@ -10,6 +10,16 @@ import subprocess
 import venv
 from pathlib import Path
 
+if os.name == 'nt':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# Force UTF-8 I/O in spawned subprocesses too (pip/patchright output can
+# contain bytes the Windows console codepage can't decode as text=True).
+SUBPROCESS_ENV = os.environ.copy()
+SUBPROCESS_ENV['PYTHONIOENCODING'] = 'utf-8'
+SUBPROCESS_ENV['PYTHONUTF8'] = '1'
+
 
 class SkillEnvironment:
     """Manages skill-specific virtual environment"""
@@ -50,12 +60,16 @@ class SkillEnvironment:
         if self.requirements_file.exists():
             print("📦 Installing dependencies...")
             try:
-                # Upgrade pip first
+                # Upgrade pip first. On Windows, pip.exe can't replace itself
+                # while running, so upgrade it via `python -m pip` instead.
                 subprocess.run(
-                    [str(self.venv_pip), "install", "--upgrade", "pip"],
+                    [str(self.venv_python), "-m", "pip", "install", "--upgrade", "pip"],
                     check=True,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    env=SUBPROCESS_ENV
                 )
 
                 # Install requirements
@@ -63,7 +77,10 @@ class SkillEnvironment:
                     [str(self.venv_pip), "install", "-r", str(self.requirements_file)],
                     check=True,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    env=SUBPROCESS_ENV
                 )
                 print("✅ Dependencies installed")
 
@@ -76,7 +93,10 @@ class SkillEnvironment:
                         [str(self.venv_python), "-m", "patchright", "install", "chrome"],
                         check=True,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace',
+                        env=SUBPROCESS_ENV
                     )
                     print("✅ Chrome installed")
                 except subprocess.CalledProcessError as e:
@@ -129,7 +149,7 @@ class SkillEnvironment:
 
         try:
             # Run the script with venv Python
-            result = subprocess.run(cmd)
+            result = subprocess.run(cmd, env=SUBPROCESS_ENV)
             return result.returncode
         except Exception as e:
             print(f"❌ Failed to run script: {e}")
