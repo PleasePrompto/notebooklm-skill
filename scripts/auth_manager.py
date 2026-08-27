@@ -27,6 +27,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
 from browser_utils import BrowserFactory
 
+# NotebookLM was rebranded to Gemini Notebook and moved to notebook.google.com.
+# Google still redirects the old host, and saved URLs in data/library.json use it,
+# so both hosts must be accepted rather than swapping one for the other.
+NOTEBOOK_HOST_RE = re.compile(r"\bnotebook(?:lm)?\.google\.com\b")
+NOTEBOOK_URL_RE = re.compile(r"^https://notebook(?:lm)?\.google\.com/")
+
 
 class AuthManager:
     """
@@ -114,7 +120,7 @@ class AuthManager:
             page.goto("https://notebooklm.google.com", wait_until="domcontentloaded")
 
             # Check if already authenticated
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
+            if NOTEBOOK_HOST_RE.search(page.url) and "accounts.google.com" not in page.url:
                 print("  ✅ Already authenticated!")
                 self._save_browser_state(context)
                 return True
@@ -126,7 +132,7 @@ class AuthManager:
             try:
                 # Wait for URL to change to NotebookLM (regex ensures it's the actual domain, not a parameter)
                 timeout_ms = int(timeout_minutes * 60 * 1000)
-                page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=timeout_ms)
+                page.wait_for_url(NOTEBOOK_URL_RE, timeout=timeout_ms)
 
                 print(f"  ✅ Login successful!")
 
@@ -260,7 +266,7 @@ class AuthManager:
             page.goto("https://notebooklm.google.com", wait_until="domcontentloaded", timeout=30000)
 
             # Check if we can access NotebookLM
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
+            if NOTEBOOK_HOST_RE.search(page.url) and "accounts.google.com" not in page.url:
                 print("  ✅ Authentication is valid")
                 return True
             else:

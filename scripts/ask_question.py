@@ -77,7 +77,8 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         page.goto(notebook_url, wait_until="domcontentloaded")
 
         # Wait for NotebookLM
-        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+        # Accepts both hosts: saved library URLs still use the old one and get redirected.
+        page.wait_for_url(re.compile(r"^https://notebook(?:lm)?\.google\.com/"), timeout=10000)
 
         # Wait for query input (MCP approach)
         print("  ⏳ Waiting for query input...")
